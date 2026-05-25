@@ -293,13 +293,13 @@ let trades=[];
 let dir='',setup='',result='',emotion='';
 let checks=Array(CHECKS.length).fill(false);
 let levels={};
-let gsUrl='';
+let gsUrl='https://script.google.com/macros/s/AKfycbxkD_t8vHXTJmns0ekHd0nY2oq5CpsRpuqXWNu_eB8wKz-C3MM8qlPgaPp6_v0UKV8mbA/exec';
 
 function load(){
   try{trades=JSON.parse(localStorage.getItem('fx_trades')||'[]');}catch(e){trades=[];}
-  gsUrl=localStorage.getItem('fx_gs_url')||'';
+  gsUrl=localStorage.getItem('fx_gs_url')||'https://script.google.com/macros/s/AKfycbxkD_t8vHXTJmns0ekHd0nY2oq5CpsRpuqXWNu_eB8wKz-C3MM8qlPgaPp6_v0UKV8mbA/exec';
   if(gsUrl){
-    document.getElementById('gs-banner').style.display='none';
+    document.getElementById('gs-banner').style.display='none'; // already configured
     document.getElementById('gs-url-input').value=gsUrl;
   }
 }
@@ -311,7 +311,7 @@ function saveGsUrl(){
   if(!v){return;}
   gsUrl=v;
   localStorage.setItem('fx_gs_url',v);
-  document.getElementById('gs-banner').style.display='none';
+  document.getElementById('gs-banner').style.display='none'; // already configured
   document.getElementById('sync-status').textContent='✓ URL enregistrée';
 }
 
@@ -625,7 +625,7 @@ function renderErrors(){
     </div>`).join('');
 }
 
-load();
+load(); document.getElementById('gs-banner').style.display='none';
 document.getElementById('f-date').value=new Date().toISOString().split('T')[0];
 initChecks();
 </script>
