@@ -988,11 +988,28 @@ function exportCSV(){
   a.click();
 }
 
+// LOAD FROM SHEETS
+async function loadFromSheets(){
+  try{
+    const res=await fetch(GS_URL,{method:'GET'});
+    const data=await res.json();
+    if(data.status==='ok'&&data.trades&&data.trades.length){
+      trades=data.trades;
+      localStorage.setItem('loustic_trades',JSON.stringify(trades));
+      console.log('Trades chargés depuis Google Sheets: '+trades.length);
+    }
+  }catch(e){
+    console.log('Chargement depuis localStorage');
+  }
+}
+
 // INIT
 loadData();
-renderOverview();
-initMonthSelects();
-initAnnualSelects();
+loadFromSheets().then(()=>{
+  renderOverview();
+  initMonthSelects();
+  initAnnualSelects();
+});
 </script>
 </body>
 </html>
