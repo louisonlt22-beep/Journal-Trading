@@ -989,18 +989,25 @@ function exportCSV(){
 }
 
 // LOAD FROM SHEETS
-async function loadFromSheets(){
-  try{
-    const res=await fetch(GS_URL,{method:'GET'});
-    const data=await res.json();
-    if(data.status==='ok'&&data.trades&&data.trades.length){
-      trades=data.trades;
-      localStorage.setItem('loustic_trades',JSON.stringify(trades));
-      console.log('Trades chargés depuis Google Sheets: '+trades.length);
-    }
-  }catch(e){
-    console.log('Chargement depuis localStorage');
-  }
+function loadFromSheets(){
+  return new Promise((resolve)=>{
+    const cbName='gs_cb_'+Date.now();
+    window[cbName]=function(data){
+      if(data.status==='ok'&&data.trades&&data.trades.length){
+        trades=data.trades;
+        localStorage.setItem('loustic_trades',JSON.stringify(trades));
+      }
+      document.getElementById('script-gs')&&document.getElementById('script-gs').remove();
+      delete window[cbName];
+      resolve();
+    };
+    const script=document.createElement('script');
+    script.id='script-gs';
+    script.src=GS_URL+'?callback='+cbName;
+    script.onerror=function(){resolve();};
+    document.head.appendChild(script);
+    setTimeout(resolve,5000);
+  });
 }
 
 // INIT
