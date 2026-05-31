@@ -1237,16 +1237,16 @@ async function saveTrade(){
 }
 
 async function delTrade(id){
-  if(!confirm('Supprimer ce trade définitivement ?\nIl sera supprimé du journal ET de Google Sheets.'))return;
-  // 1. Delete from Google Sheets first
-  await deleteFromSheets(id);
-  // 2. Delete from localStorage
+  if(!confirm('Supprimer ce trade ?'))return;
+  // 1. Delete from localStorage immediately
   trades=trades.filter(t=>t.id!==id);
   saveTrades();
-  showToast('🗑 Trade supprimé définitivement');
   renderOverview();
   const histPage = document.getElementById('page-history');
   if(histPage && histPage.classList.contains('active')) renderHistory();
+  showToast('🗑 Trade supprimé');
+  // 2. Try to delete from Google Sheets (background)
+  deleteFromSheets(id);
 }
 
 function showToast(msg){
