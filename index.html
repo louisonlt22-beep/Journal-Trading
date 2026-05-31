@@ -53,6 +53,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 #app.visible{display:block}
 
 /* TOPBAR */
+.fab-new{display:none}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
 .topbar-left{display:flex;align-items:center;gap:10px;cursor:pointer}
 .logo-btn{width:32px;height:32px;background:var(--red);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;transition:opacity .15s}
@@ -66,7 +67,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .btn-new:hover{opacity:.85}
 
 /* NAV */
-.nav{display:flex;gap:2px;padding:0 1rem;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
+.nav{display:flex;gap:2px;padding:0 1rem;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto;position:sticky;top:56px;z-index:99}
 .nav-btn{padding:11px 14px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:none;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;font-family:var(--font);transition:all .15s}
 .nav-btn:hover{color:var(--text2)}
 .nav-btn.active{color:var(--red);border-bottom-color:var(--red)}
@@ -264,9 +265,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   .balance-tag{display:none}
   .logo-btn{width:28px;height:28px;font-size:14px}
   .btn-new{display:none}
-  .nav{padding:0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .nav{padding:0;-webkit-overflow-scrolling:touch;scrollbar-width:none;position:sticky;top:52px;z-index:99}
   .nav::-webkit-scrollbar{display:none}
-  .nav-btn{padding:10px 12px;font-size:12px;flex-shrink:0}
+  .nav-btn{padding:10px 12px;font-size:12px;flex-shrink:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   .main{padding:0.75rem}
   .cards4{grid-template-columns:repeat(2,1fr);gap:8px}
   .stat-card{padding:0.875rem}
@@ -295,7 +296,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   #account-menu{right:0.5rem;left:0.5rem;min-width:unset}
   .chart-wrap{height:180px}
   .month-val{width:70px;font-size:11px}
-  .fab-new{display:flex !important;position:fixed;bottom:1.5rem;right:1.5rem;width:56px;height:56px;background:var(--red);border:none;border-radius:50%;font-size:24px;color:#fff;cursor:pointer;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(255,61,90,.4);z-index:150;transition:transform .15s;font-family:var(--font)}
+  .fab-new{display:flex;position:fixed;bottom:1.5rem;right:1.5rem;width:56px;height:56px;background:var(--red);border:none;border-radius:50%;font-size:28px;color:#fff;cursor:pointer;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(255,61,90,.4);z-index:150;transition:transform .15s;font-family:var(--font);-webkit-tap-highlight-color:transparent}
   .fab-new:active{transform:scale(0.92)}
 }
 @media(max-width:400px){
@@ -596,6 +597,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 </div>
 
 <div class="confirm-toast" id="toast">✓ Enregistré !</div>
+  <button class="fab-new" id="fab-btn" aria-label="Nouveau trade">+</button>
 
 <script>
 const LEVELS=['FVG','OB','BPR','GPL','FVG EX','OTE','OB EX','RB'];
@@ -839,6 +841,7 @@ function showPage(name,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
   if(name==='overview')renderOverview();
   if(name==='monthly'){initMonthSelects();renderMonthly();}
   if(name==='annual'){initAnnualSelects();renderAnnual();}
@@ -1631,7 +1634,7 @@ function initCandles(){
       const y=c.y+Math.sin(t*c.speed+c.phase)*c.amp;
       const wiggle=Math.sin(t*c.bobSpeed+c.phase*2)*0.05;
       ctx.save();
-      ctx.globalAlpha=0.22;
+      ctx.globalAlpha=0.35;
       ctx.translate(c.x+c.w/2,y);
       ctx.rotate(wiggle);
       ctx.translate(-c.w/2,0);
