@@ -1524,128 +1524,167 @@ function renderHistory(){
 
 // ===== GALLERY =====
 function renderGallery(){
-  const ct=document.getElementById('gallery-container');
-  if(!trades||!trades.length){ct.innerHTML='<div class="empty">Aucun trade — total: '+trades.length+'</div>';return;}
-  const closed=trades.filter(t=>t&&t.pair);
-  if(!closed.length){ct.innerHTML='<div class="empty">Aucun trade avec paire — total trades: '+trades.length+'</div>';return;}
-  const weeks={};
-  closed.forEach(t=>{
-    const d=new Date(String(t.datetime).replace(' ','T'));const monday=new Date(d);
-    monday.setDate(d.getDate()-(d.getDay()===0?6:d.getDay()-1));
-    const key=monday.toISOString().split('T')[0];
-    if(!weeks[key])weeks[key]=[];weeks[key].push(t);
-  });
-  ct.innerHTML=Object.entries(weeks).sort((a,b)=>b[0].localeCompare(a[0])).map(([week,wt])=>{
-    const weekEnd=new Date(week);weekEnd.setDate(weekEnd.getDate()+6);
-    return `<div class="gallery-week">
-      <div class="gallery-week-title">Semaine du ${new Date(week).toLocaleDateString('fr-FR')} au ${weekEnd.toLocaleDateString('fr-FR')} · ${wt.length} trades</div>
-      <div class="gallery-grid">${wt.map(t=>{
-        const snap=t.tv.includes('tradingview.com/x/')?'https://s3.tradingview.com/snapshots/'+t.tv.split('/x/')[1].replace('/','').toLowerCase()+'.png':'';
+  try{
+    const ct=document.getElementById('gallery-container');
+    if(!ct){ console.log('gallery-container not found'); return; }
+    if(!trades||!trades.length){
+      ct.innerHTML='<div class="empty">📸 Aucun trade enregistré</div>';
+      return;
+    }
+    // Group by week
+    const weeks={};
+    trades.forEach(t=>{
+      try{
+        const raw=t.datetime||t.Date||'';
+        const d=new Date(String(raw).replace(' ','T'));
+        const monday=new Date(d);
+        const day=d.getDay()||7;
+        monday.setDate(d.getDate()-day+1);
+        const key=monday.toISOString().split('T')[0];
+        if(!weeks[key])weeks[key]=[];
+        weeks[key].push(t);
+      }catch(e){}
+    });
+    const keys=Object.keys(weeks).sort().reverse();
+    if(!keys.length){
+      ct.innerHTML='<div class="empty">📸 Erreur de dates</div>';
+      return;
+    }
+    ct.innerHTML=keys.map(week=>{
+      const wt=weeks[week];
+      const wStart=new Date(week);
+      const wEnd=new Date(week);wEnd.setDate(wEnd.getDate()+6);
+      const label='Semaine du '+wStart.toLocaleDateString('fr-FR')+' au '+wEnd.toLocaleDateString('fr-FR');
+      const cards=wt.map(t=>{
+        const pair=t.pair||t.Paire||'—';
+        const setup=t.setup||t.Setup||'—';
+        const dir=t.direction||t.Direction||'—';
+        const status=t.status||t.Statut||'—';
+        const pnl=parseFloat(t.pnl||t['P&L']||0);
+        const tv=t.tv||t['Lien TV']||'';
+        const dt=t.datetime||t.Date||'';
+        const snap=tv&&tv.includes('/x/')?'https://s3.tradingview.com/snapshots/'+(tv.split('/x/')[1]||'').replace('/','').toLowerCase()+'.png':'';
+        const sClass=setup.toLowerCase().replace(' ','');
+        const statusClass=status==='WIN'?'b-win':status==='LOSS'?'b-loss':'b-be';
         return `<div class="gallery-card">
-          ${snap?`<img class="gallery-img" src="${snap}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
-          <div class="gallery-img-placeholder" style="display:none">${t.tv?`<a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a>`:'Pas de lien TV'}</div>`
-          :t.tv?`<div class="gallery-img-placeholder">📊 <a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a></div>`
-          :`<div class="gallery-img-placeholder" style="color:var(--text3)">📊 Pas de capture</div>`}
+          ${snap
+            ?`<img class="gallery-img" src="${snap}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt=""><div class="gallery-img-placeholder" style="display:none">${tv?`<a href="${tv}" target="_blank" style="color:var(--blue);font-size:13px">Voir sur TradingView →</a>`:'Pas de capture'}</div>`
+            :tv
+              ?`<div class="gallery-img-placeholder"><a href="${tv}" target="_blank" style="color:var(--blue);font-size:13px">📊 Voir sur TradingView →</a></div>`
+              :`<div class="gallery-img-placeholder" style="color:var(--text3)">📊 Pas de capture TV</div>`
+          }
           <div class="gallery-info">
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <span class="badge b-${(t.setup||'').toLowerCase()}">${t.setup}</span>
-              <span class="badge b-${(t.direction||'').toLowerCase()}">${t.direction}</span>
-              <span class="badge b-${t.status==='WIN'?'win':t.status==='LOSS'?'loss':'be'}">${t.status}</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+              <span class="badge b-${sClass}">${setup}</span>
+              <span class="badge b-${dir.toLowerCase()==='buy'?'buy':'sell'}">${dir}</span>
+              <span class="badge ${statusClass}">${status}</span>
             </div>
-            <div style="font-size:12px;color:var(--text2);margin-top:6px">${t.pair} · ${fmtDate(t.datetime)}</div>
-            <div style="font-size:14px;font-weight:700;font-family:var(--mono);color:${(t.pnl||0)>=0?'var(--green)':'var(--red)'}">${fmt$(t.pnl||0)}</div>
+            <div style="font-size:13px;font-weight:600">${pair}</div>
+            <div style="font-size:12px;color:var(--text2)">${String(dt).slice(0,16)}</div>
+            <div style="font-size:14px;font-weight:700;font-family:var(--mono);color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':''}${pnl.toFixed(2)}$</div>
           </div>
-        </div>`;}).join('')}</div>
-    </div>`;}).join('');
+        </div>`;
+      }).join('');
+      return `<div class="gallery-week">
+        <div class="gallery-week-title">${label} · ${wt.length} trade${wt.length>1?'s':''}</div>
+        <div class="gallery-grid">${cards}</div>
+      </div>`;
+    }).join('');
+  }catch(err){
+    const ct=document.getElementById('gallery-container');
+    if(ct) ct.innerHTML='<div class="empty">Erreur: '+err.message+'</div>';
+  }
 }
 
-// ===== WEEKLY REPORT =====
-function initWeeklySelect(){
-  const sel=document.getElementById('sel-weekly-week');
-  if(!sel)return;
-  const weeks=[...new Set(trades.filter(t=>t.datetime).map(t=>{
-    const d=new Date(String(t.datetime).replace(' ','T'));
-    if(isNaN(d.getTime()))return null;
-    const monday=new Date(d);monday.setDate(d.getDate()-(d.getDay()===0?6:d.getDay()-1));
-    return monday.toISOString().split('T')[0];
-  }).filter(Boolean))].sort().reverse();
-  sel.innerHTML=weeks.map(w=>{
-    const d=new Date(w);const end=new Date(w);end.setDate(end.getDate()+6);
-    return `<option value="${w}">Sem. ${d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})} - ${end.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})}</option>`;
-  }).join('');
-  if(weeks.length) renderWeeklyReport();
-}
 
 function renderWeeklyReport(){
-  const sel=document.getElementById('sel-weekly-week');
-  if(!sel||!sel.value){
-    document.getElementById('weekly-content').innerHTML='<div class="empty">Aucune semaine — '+trades.length+' trades en mémoire</div>';
-    return;
+  try{
+    const sel=document.getElementById('sel-weekly-week');
+    const wct=document.getElementById('weekly-content');
+    if(!wct) return;
+    if(!trades||!trades.length){
+      wct.innerHTML='<div class="empty">📝 Aucun trade enregistré</div>';
+      return;
+    }
+    if(!sel||!sel.value){
+      wct.innerHTML='<div class="empty">📝 Sélectionne une semaine</div>';
+      return;
+    }
+    const wStart=new Date(sel.value);
+    const wEnd=new Date(sel.value);wEnd.setDate(wEnd.getDate()+6);wEnd.setHours(23,59,59);
+    const wt=trades.filter(t=>{
+      const d=new Date(String(t.datetime||t.Date||'').replace(' ','T'));
+      return !isNaN(d.getTime())&&d>=wStart&&d<=wEnd;
+    });
+    if(!wt.length){
+      wct.innerHTML='<div class="empty">📝 Aucun trade cette semaine</div>';
+      return;
+    }
+    const wins=wt.filter(t=>(t.status||t.Statut)==='WIN').length;
+    const losses=wt.filter(t=>(t.status||t.Statut)==='LOSS').length;
+    const be=wt.filter(t=>(t.status||t.Statut)==='BE').length;
+    const pnl=wt.reduce((s,t)=>s+parseFloat(t.pnl||t['P&L']||0),0);
+    const wr=wt.length?(wins/wt.length*100).toFixed(1):0;
+    const rr=wt.reduce((s,t)=>s+parseFloat(t.realized||t['R réalisé']||0),0);
+    const avgPlan=wt.length?(wt.reduce((s,t)=>s+parseInt(t.planScore||t['Plan Score']||0),0)/wt.length/6*100).toFixed(1):0;
+    const bySetup={MB:{w:0,t:0},BB:{w:0,t:0},QM:{w:0,t:0}};
+    wt.forEach(t=>{
+      const s=t.setup||t.Setup||'';
+      if(bySetup[s]){bySetup[s].t++;if((t.status||t.Statut)==='WIN')bySetup[s].w++;}
+    });
+    wct.innerHTML=`
+      <div class="cards4" style="margin-bottom:1.5rem">
+        <div class="stat-card"><div class="label">P&L Semaine</div><div class="value ${pnl>=0?'pos':'neg'}">${pnl>=0?'+':''}${pnl.toFixed(2)}$</div><div class="sub">${wt.length} trades</div></div>
+        <div class="stat-card"><div class="label">Win Rate</div><div class="value" style="color:var(--blue)">${wr}%</div><div class="sub">${wins}W · ${losses}L · ${be}BE</div></div>
+        <div class="stat-card"><div class="label">R Total</div><div class="value ${rr>=0?'pos':'neg'}">${rr>=0?'+':''}${rr.toFixed(2)}R</div></div>
+        <div class="stat-card"><div class="label">Respect Plan</div><div class="value ${parseFloat(avgPlan)>=80?'pos':parseFloat(avgPlan)>=60?'neu':'neg'}">${avgPlan}%</div></div>
+      </div>
+      <div class="grid2">
+        <div class="card">
+          <div class="card-title">Performance par Setup</div>
+          ${Object.entries(bySetup).filter(([,v])=>v.t>0).map(([s,v])=>{
+            const wr2=v.t?(v.w/v.t*100).toFixed(1):0;
+            const colors={MB:'var(--purple)',BB:'var(--teal)',QM:'var(--amber)'};
+            return `<div class="setup-bar">
+              <div class="setup-header"><span style="font-weight:600;color:${colors[s]}">${s}</span><span style="font-family:var(--mono);font-size:13px">${v.w}/${v.t} wins</span></div>
+              <div style="display:flex;align-items:center;gap:8px"><div class="bar-bg"><div class="bar-fill" style="width:${wr2}%;background:${colors[s]}"></div></div><span style="font-size:12px;color:var(--text2)">${wr2}%</span></div>
+            </div>`;
+          }).join('')||'<div style="color:var(--text3);font-size:13px">Aucun setup reconnu</div>'}
+        </div>
+        <div class="card">
+          <div class="card-title">Trades de la Semaine</div>
+          ${wt.map(t=>{
+            const pair=t.pair||t.Paire||'—';
+            const setup=t.setup||t.Setup||'—';
+            const status=t.status||t.Statut||'—';
+            const pnl2=parseFloat(t.pnl||t['P&L']||0);
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="font-weight:600;font-size:13px">${pair}</span>
+                <span class="badge b-${setup.toLowerCase()}">${setup}</span>
+                <span class="badge b-${status==='WIN'?'win':status==='LOSS'?'loss':'be'}">${status}</span>
+              </div>
+              <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${pnl2>=0?'var(--green)':'var(--red)'}">${pnl2>=0?'+':''}${pnl2.toFixed(2)}$</span>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="card" style="background:${pnl>=0?'var(--green-bg)':'var(--red-bg)'};border-color:${pnl>=0?'var(--green-border)':'var(--red-border)'}">
+        <div class="card-title" style="color:${pnl>=0?'var(--green)':'var(--red)'}">⚡ Bilan de la semaine</div>
+        <div style="font-size:13px;color:var(--text2);line-height:2">
+          ${parseFloat(wr)<50?'<div>• Win rate sous 50% — revoir la sélection des setups</div>':''}
+          ${parseFloat(avgPlan)<70?'<div>• Respect du plan sous 70% — renforcer la discipline</div>':''}
+          ${losses>wins?'<div>• Plus de losses que de wins cette semaine</div>':''}
+          ${pnl>=0&&parseFloat(wr)>=50&&parseFloat(avgPlan)>=70?'<div style="color:var(--green)">✓ Bonne semaine — continue comme ça !</div>':''}
+          ${pnl<0?'<div>• Semaine négative — analyser les trades perdants</div>':''}
+        </div>
+      </div>`;
+  }catch(err){
+    const wct=document.getElementById('weekly-content');
+    if(wct) wct.innerHTML='<div class="empty">Erreur: '+err.message+'</div>';
   }
-  const wStart=new Date(sel.value);const wEnd=new Date(sel.value);wEnd.setDate(wEnd.getDate()+6);wEnd.setHours(23,59,59);
-  const wt=trades.filter(t=>{const d=new Date(String(t.datetime).replace(' ','T'));return d>=wStart&&d<=wEnd;});
-  const wins=wt.filter(t=>t.status==='WIN').length;
-  const losses=wt.filter(t=>t.status==='LOSS').length;
-  const be=wt.filter(t=>t.status==='BE').length;
-  const pnl=wt.reduce((s,t)=>s+(t.pnl||0),0);
-  const wr=wt.length?(wins/wt.length*100).toFixed(1):0;
-  const rr=wt.reduce((s,t)=>s+(t.realized||0),0);
-  const avgPlan=wt.length?(wt.reduce((s,t)=>s+t.planScore,0)/wt.length/6*100).toFixed(1):0;
-  const bySetup={MB:{w:0,t:0},BB:{w:0,t:0},QM:{w:0,t:0}};
-  wt.forEach(t=>{if(bySetup[t.setup]){bySetup[t.setup].t++;if(t.status==='WIN')bySetup[t.setup].w++;}});
-  const bestPsych=PSYCH.slice(1).map((l,i)=>{const pt=wt.filter(t=>t.psych===i+1);const w=pt.filter(t=>t.status==='WIN').length;return{l,wr:pt.length?w/pt.length*100:0,n:pt.length};}).filter(p=>p.n>0).sort((a,b)=>b.wr-a.wr)[0];
-  const errors=wt.filter(t=>t.notes&&t.notes.length>0);
-
-  document.getElementById('weekly-content').innerHTML=`
-    <div class="cards4" style="margin-bottom:1.5rem">
-      <div class="stat-card"><div class="label">P&L Semaine</div><div class="value ${pnl>=0?'pos':'neg'}">${fmt$(pnl)}</div><div class="sub">${wt.length} trades</div></div>
-      <div class="stat-card"><div class="label">Win Rate</div><div class="value" style="color:var(--blue)">${wr}%</div><div class="sub">${wins}W · ${losses}L · ${be}BE</div></div>
-      <div class="stat-card"><div class="label">R Total</div><div class="value ${rr>=0?'pos':'neg'}">${rr>=0?'+':''}${rr.toFixed(2)}R</div></div>
-      <div class="stat-card"><div class="label">Respect Plan</div><div class="value ${parseFloat(avgPlan)>=80?'pos':parseFloat(avgPlan)>=60?'neu':'neg'}">${avgPlan}%</div></div>
-    </div>
-    <div class="grid2">
-      <div class="card">
-        <div class="card-title">Performance par Setup</div>
-        ${Object.entries(bySetup).filter(([,v])=>v.t>0).map(([s,v])=>{
-          const wr2=v.t?(v.w/v.t*100).toFixed(1):0;
-          const colors={MB:'var(--purple)',BB:'var(--teal)',QM:'var(--amber)'};
-          return `<div class="setup-bar">
-            <div class="setup-header"><span style="font-weight:600;color:${colors[s]}">${s}</span><span style="font-family:var(--mono);font-size:13px">${v.w}/${v.t} wins</span></div>
-            <div style="display:flex;align-items:center;gap:8px"><div class="bar-bg"><div class="bar-fill" style="width:${wr2}%;background:${colors[s]}"></div></div><span style="font-size:12px;color:var(--text2)">${wr2}%</span></div>
-          </div>`;}).join('')||'<div class="empty">Aucun trade</div>'}
-      </div>
-      <div class="card">
-        <div class="card-title">Trades de la Semaine</div>
-        ${wt.length?wt.map(t=>`
-          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-            <div style="display:flex;align-items:center;gap:6px">
-              <span style="font-weight:600;font-size:13px">${t.pair}</span>
-              <span class="badge b-${(t.setup||'').toLowerCase()}">${t.setup}</span>
-              <span class="badge b-${t.status==='WIN'?'win':t.status==='LOSS'?'loss':'be'}">${t.status}</span>
-            </div>
-            <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${(t.pnl||0)>=0?'var(--green)':'var(--red)'}">${fmt$(t.pnl||0)}</span>
-          </div>`).join(''):'<div class="empty">Aucun trade</div>'}
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-title">🧠 Bilan Psychologique</div>
-      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-        ${PSYCH.slice(1).map((l,i)=>{const n=wt.filter(t=>t.psych===i+1).length;const colors=['var(--red)','#ff8c42','var(--amber)','#a0d468','var(--green)'];return n?`<div style="text-align:center;padding:8px 16px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)"><div style="font-size:18px;font-weight:700;color:${colors[i]}">${n}</div><div style="font-size:11px;color:var(--text2)">${l}</div></div>`:''}).join('')}
-      </div>
-      ${bestPsych?`<div class="insight"><div class="i-dot" style="background:var(--green)"></div><span>Meilleur état cette semaine : <strong>${bestPsych.l}</strong> (${bestPsych.wr.toFixed(0)}% win rate)</span></div>`:''}
-    </div>
-    ${errors.length?`<div class="card"><div class="card-title">📝 Notes & Observations</div>${errors.map(t=>`<div style="padding:10px 0;border-bottom:1px solid var(--border)"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">${t.pair} · ${fmtDate(t.datetime)} · <span class="badge b-${(t.setup||'').toLowerCase()}">${t.setup}</span></div><div style="font-size:13px">${t.notes}</div></div>`).join('')}</div>`:''}
-    <div class="card" style="background:var(--red-bg);border-color:var(--red-border)">
-      <div class="card-title" style="color:var(--red2)">⚡ Points à améliorer</div>
-      <div style="font-size:13px;color:var(--text2);line-height:1.8">
-        ${parseFloat(wr)<50?'<div>• Win rate sous 50% — revoir la sélection des setups</div>':''}
-        ${parseFloat(avgPlan)<70?'<div>• Respect du plan sous 70% — renforcer la discipline</div>':''}
-        ${losses>wins?'<div>• Plus de losses que de wins cette semaine</div>':''}
-        ${pnl<0?'<div>• Semaine négative — analyser les trades perdants</div>':''}
-        ${parseFloat(wr)>=50&&parseFloat(avgPlan)>=70&&pnl>=0?'<div style="color:var(--green)">✓ Bonne semaine — continue comme ça !</div>':''}
-      </div>
-    </div>`;
 }
+
 
 function exportWeeklyPDF(){
   const sel=document.getElementById('sel-weekly-week');
