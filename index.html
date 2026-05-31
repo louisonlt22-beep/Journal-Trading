@@ -976,18 +976,25 @@ async function syncGS(trade){
 
 async function deleteFromSheets(id){
   if(!currentAccount||!currentAccount.gsUrl)return;
-  try{
-    // Use JSONP-style GET for delete since no-cors POST can't confirm
-    const cbName='del_cb_'+Date.now();
-    await new Promise((resolve)=>{
-      window[cbName]=function(){ delete window[cbName]; resolve(); };
+  return new Promise((resolve)=>{
+    try{
+      const cbName='del_'+Date.now();
+      window[cbName]=function(data){
+        try{ document.getElementById('script_'+cbName).remove(); }catch(e){}
+        delete window[cbName];
+        resolve();
+      };
       const script=document.createElement('script');
-      script.src=currentAccount.gsUrl+'?action=delete&id='+encodeURIComponent(id)+'&callback='+cbName;
-      script.onerror=function(){ delete window[cbName]; resolve(); };
+      script.id='script_'+cbName;
+      script.src=currentAccount.gsUrl+'?action=delete&id='+String(id)+'&callback='+cbName;
+      script.onerror=function(){
+        delete window[cbName];
+        resolve();
+      };
       document.head.appendChild(script);
-      setTimeout(()=>{ delete window[cbName]; script.remove(); resolve(); }, 3000);
-    });
-  }catch(e){}
+      setTimeout(()=>{ delete window[cbName]; resolve(); }, 5000);
+    }catch(e){ resolve(); }
+  });
 }
 
 async function updateInSheets(trade){
@@ -1230,11 +1237,13 @@ async function saveTrade(){
 }
 
 async function delTrade(id){
-  if(!confirm('Supprimer ce trade ?'))return;
+  if(!confirm('Supprimer ce trade définitivement ?\nIl sera supprimé du journal ET de Google Sheets.'))return;
+  // 1. Delete from Google Sheets first
   await deleteFromSheets(id);
+  // 2. Delete from localStorage
   trades=trades.filter(t=>t.id!==id);
   saveTrades();
-  showToast('🗑 Trade supprimé');
+  showToast('🗑 Trade supprimé définitivement');
   renderOverview();
   const histPage = document.getElementById('page-history');
   if(histPage && histPage.classList.contains('active')) renderHistory();
