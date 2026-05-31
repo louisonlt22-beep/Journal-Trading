@@ -1706,7 +1706,8 @@ function renderGallery(){
       const status = t.status || '—';
       const pnl = parseFloat(t.pnl || 0);
       const tv = t.tv || '';
-      const snap = tv && tv.includes('/x/') ? 'https://s3.tradingview.com/snapshots/' + tv.split('/x/')[1].replace('/','').toLowerCase() + '.png' : '';
+      const tvCode = tv && tv.includes('/x/') ? tv.split('/x/')[1].replace('/','').trim() : '';
+      const snap = tvCode ? 'https://s3.tradingview.com/snapshots/'+tvCode[0].toLowerCase()+'/'+tvCode+'.png' : '';
       const statusCls = status==='WIN'?'b-win':status==='LOSS'?'b-loss':'b-be';
       return `<div class="gallery-card">
         ${snap
