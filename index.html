@@ -85,8 +85,27 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .nav-btn.active{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
 
 /* MAIN */
-.main{padding:1.5rem 2rem;max-width:1400px;margin:0 auto}
-.page{display:none}.page.active{display:block}
+.main{padding:0;max-width:1400px;margin:0 auto;overflow:hidden}
+.main>.pages-container>.page{padding:1.5rem 2rem}
+.pages-container{
+  display:flex;
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+  will-change:transform;
+  width:100%;
+}
+.page{
+  flex:0 0 100%;
+  width:100%;
+  min-width:100%;
+  display:block;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .32s ease;
+}
+.page.active{
+  opacity:1;
+  pointer-events:auto;
+}
 
 /* CARDS */
 .cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.5rem}
@@ -298,7 +317,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   }
 
   /* MAIN */
-  .main{padding:0.75rem 0.75rem 5rem}
+  .main{padding:0}
+  .main>.pages-container>.page{padding:0.75rem 0.75rem 5rem}
 
   /* CARDS */
   .cards4{grid-template-columns:repeat(2,1fr);gap:8px}
@@ -508,7 +528,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
     <button class="nav-btn" onclick="showPage('analysis',this)" data-page="analysis">🔥 Analyse+</button>
   </div>
 
-  <div class="main" id="main-content">
+  <div class="main" id="main-content"><div class="pages-container" id="pages-container">
     <!-- VUE D'ENSEMBLE -->
     <div class="page active" id="page-overview">
       <div class="cards4" id="overview-cards"></div>
@@ -637,7 +657,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
         </div>
       </div>
     </div>
-  </div>
+  </div></div><!-- end pages-container + main -->
 </div>
 
 <!-- MODAL TRADE -->
@@ -957,7 +977,16 @@ async function syncGS(trade){
 async function deleteFromSheets(id){
   if(!currentAccount||!currentAccount.gsUrl)return;
   try{
-    await fetch(currentAccount.gsUrl,{method:'POST',mode:'no-cors',body:JSON.stringify({action:'delete',id}),headers:{'Content-Type':'application/json'}});
+    // Use JSONP-style GET for delete since no-cors POST can't confirm
+    const cbName='del_cb_'+Date.now();
+    await new Promise((resolve)=>{
+      window[cbName]=function(){ delete window[cbName]; resolve(); };
+      const script=document.createElement('script');
+      script.src=currentAccount.gsUrl+'?action=delete&id='+encodeURIComponent(id)+'&callback='+cbName;
+      script.onerror=function(){ delete window[cbName]; resolve(); };
+      document.head.appendChild(script);
+      setTimeout(()=>{ delete window[cbName]; script.remove(); resolve(); }, 3000);
+    });
   }catch(e){}
 }
 
@@ -995,6 +1024,14 @@ function updatePageIdx(name){
   if(idx >= 0) currentPageIdx = idx;
 }
 
+function slideTo(idx, animate){
+  const container = document.getElementById('pages-container');
+  if(!container) return;
+  if(animate === false) container.style.transition = 'none';
+  else container.style.transition = 'transform .32s cubic-bezier(.4,0,.2,1)';
+  container.style.transform = 'translateX(-' + (idx * 100) + '%)';
+}
+
 function showPage(name,btn){
   updatePageIdx(name);
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -1002,6 +1039,7 @@ function showPage(name,btn){
   const pg=document.getElementById('page-'+name);
   if(pg)pg.classList.add('active');
   if(btn)btn.classList.add('active');
+  slideTo(currentPageIdx);
   window.scrollTo({top:0,behavior:'smooth'});
   if(name==='overview')renderOverview();
   if(name==='monthly'){initMonthSelects();renderMonthly();}
@@ -1826,11 +1864,12 @@ let pointerStartX = 0, pointerStartY = 0, pointerStartTime = 0, isPointerDown = 
 
 function navigateToPage(direction){
   try{
-    if(direction === 'next' && currentPageIdx < PAGES_ORDER.length-1) currentPageIdx++;
-    else if(direction === 'prev' && currentPageIdx > 0) currentPageIdx--;
-    else return;
-    const name = PAGES_ORDER[currentPageIdx];
-    const btn = document.querySelector('[data-page="'+name+'"]');
+    let newIdx = currentPageIdx;
+    if(direction==='next' && currentPageIdx<PAGES_ORDER.length-1) newIdx++;
+    else if(direction==='prev' && currentPageIdx>0) newIdx--;
+    else{ slideTo(currentPageIdx); return; }
+    const name=PAGES_ORDER[newIdx];
+    const btn=document.querySelector('[data-page="'+name+'"]');
     showPage(name, btn);
     if(btn) btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   }catch(err){}
@@ -1838,52 +1877,119 @@ function navigateToPage(direction){
 
 function initSwipe(){
   try{
-    const main = document.getElementById('main-content');
-    if(!main) return;
+    const container = document.getElementById('pages-container');
+    if(!container) return;
+    let startX=0, startY=0, startTime=0, dragging=false, currentDrag=0;
+    const W = ()=> window.innerWidth;
 
-    // Touch events (mobile)
-    main.addEventListener('touchstart', function(e){
-      try{ pointerStartX=e.touches[0].clientX; pointerStartY=e.touches[0].clientY; pointerStartTime=Date.now(); }catch(err){}
+    // Init position
+    slideTo(0, false);
+
+    // ---- TOUCH (mobile) ----
+    container.addEventListener('touchstart', function(e){
+      try{
+        startX=e.touches[0].clientX;
+        startY=e.touches[0].clientY;
+        startTime=Date.now();
+        dragging=false;
+        currentDrag=0;
+        container.style.transition='none';
+      }catch(err){}
     }, {passive:true});
 
-    main.addEventListener('touchend', function(e){
+    container.addEventListener('touchmove', function(e){
       try{
-        const dx=e.changedTouches[0].clientX-pointerStartX;
-        const dy=e.changedTouches[0].clientY-pointerStartY;
-        const dt=Date.now()-pointerStartTime;
-        if(Math.abs(dx)>65 && Math.abs(dx)>Math.abs(dy)*1.8 && dt<400){
-          navigateToPage(dx<0?'next':'prev');
+        const dx=e.touches[0].clientX-startX;
+        const dy=e.touches[0].clientY-startY;
+        if(!dragging && Math.abs(dx)>8 && Math.abs(dx)>Math.abs(dy)){
+          dragging=true;
+        }
+        if(dragging){
+          currentDrag=dx;
+          const base=currentPageIdx*W();
+          const resistance=0.25;
+          let offset=base-dx;
+          // Add resistance at edges
+          if((dx>0 && currentPageIdx===0)||(dx<0 && currentPageIdx===PAGES_ORDER.length-1)){
+            offset=base-dx*resistance;
+          }
+          container.style.transform='translateX(-'+offset+'px)';
         }
       }catch(err){}
     }, {passive:true});
 
-    // Mouse/trackpad events (desktop Mac)
-    main.addEventListener('mousedown', function(e){
-      try{ isPointerDown=true; pointerStartX=e.clientX; pointerStartY=e.clientY; pointerStartTime=Date.now(); }catch(err){}
+    container.addEventListener('touchend', function(e){
+      try{
+        const dx=e.changedTouches[0].clientX-startX;
+        const dy=e.changedTouches[0].clientY-startY;
+        const dt=Date.now()-startTime;
+        const vel=Math.abs(dx)/dt;
+        container.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';
+        if(dragging && (Math.abs(dx)>W()*0.3 || vel>0.5)){
+          navigateToPage(dx<0?'next':'prev');
+        } else {
+          slideTo(currentPageIdx);
+        }
+        dragging=false;
+      }catch(err){}
+    }, {passive:true});
+
+    // ---- MOUSE drag (Mac trackpad click+drag) ----
+    container.addEventListener('mousedown', function(e){
+      try{
+        if(e.button!==0) return;
+        startX=e.clientX; startY=e.clientY; startTime=Date.now();
+        isPointerDown=true; dragging=false;
+        container.style.transition='none';
+        e.preventDefault();
+      }catch(err){}
     });
-    main.addEventListener('mouseup', function(e){
+    window.addEventListener('mousemove', function(e){
       try{
         if(!isPointerDown) return;
-        isPointerDown=false;
-        const dx=e.clientX-pointerStartX;
-        const dy=e.clientY-pointerStartY;
-        const dt=Date.now()-pointerStartTime;
-        if(Math.abs(dx)>80 && Math.abs(dx)>Math.abs(dy)*2 && dt<500){
-          navigateToPage(dx<0?'next':'prev');
+        const dx=e.clientX-startX;
+        const dy=e.clientY-startY;
+        if(!dragging && Math.abs(dx)>8 && Math.abs(dx)>Math.abs(dy)) dragging=true;
+        if(dragging){
+          currentDrag=dx;
+          const base=currentPageIdx*W();
+          let offset=base-dx;
+          if((dx>0&&currentPageIdx===0)||(dx<0&&currentPageIdx===PAGES_ORDER.length-1)) offset=base-dx*0.25;
+          container.style.transform='translateX(-'+offset+'px)';
         }
       }catch(err){}
     });
-    main.addEventListener('mouseleave', function(){ isPointerDown=false; });
-
-    // Trackpad wheel horizontal scroll (Mac)
-    let wheelTimeout;
-    main.addEventListener('wheel', function(e){
+    window.addEventListener('mouseup', function(e){
       try{
-        if(Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 30){
+        if(!isPointerDown) return;
+        const dx=e.clientX-startX;
+        const dt=Date.now()-startTime;
+        const vel=Math.abs(dx)/dt;
+        isPointerDown=false;
+        container.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';
+        if(dragging && (Math.abs(dx)>W()*0.25 || vel>0.4)){
+          navigateToPage(dx<0?'next':'prev');
+        } else if(dragging){
+          slideTo(currentPageIdx);
+        }
+        dragging=false;
+      }catch(err){}
+    });
+
+    // ---- TRACKPAD horizontal scroll (Mac) ----
+    let wheelLock=false, wheelTimeout;
+    window.addEventListener('wheel', function(e){
+      try{
+        if(wheelLock) return;
+        if(Math.abs(e.deltaX)>Math.abs(e.deltaY)*1.5 && Math.abs(e.deltaX)>15){
           clearTimeout(wheelTimeout);
-          wheelTimeout = setTimeout(function(){
-            navigateToPage(e.deltaX > 0 ? 'next' : 'prev');
-          }, 80);
+          wheelTimeout=setTimeout(function(){
+            if(Math.abs(e.deltaX)>30){
+              wheelLock=true;
+              navigateToPage(e.deltaX>0?'next':'prev');
+              setTimeout(()=>{ wheelLock=false; }, 500);
+            }
+          }, 50);
         }
       }catch(err){}
     }, {passive:true});
