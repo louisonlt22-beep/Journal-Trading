@@ -1009,12 +1009,14 @@ function loadFromSheets(){
   const cbName='gs_cb_'+Date.now();
   window[cbName]=function(data){
     if(data.status==='ok'&&data.trades&&data.trades.length){
-      trades=data.trades;
+      // Use Sheet as source of truth - but keep local trades not yet in Sheet
+      const sheetIds=new Set(data.trades.map(t=>String(t.id)));
+      const localOnly=trades.filter(t=>!sheetIds.has(String(t.id)));
+      trades=[...data.trades,...localOnly];
       saveTrades();
       renderOverview();
     }
-    const s=document.getElementById('script-gs');
-    if(s)s.remove();
+    try{const s=document.getElementById('script-gs');if(s)s.remove();}catch(e){}
     delete window[cbName];
   };
   const script=document.createElement('script');
@@ -1022,7 +1024,7 @@ function loadFromSheets(){
   script.src=currentAccount.gsUrl+'?callback='+cbName;
   script.onerror=function(){};
   document.head.appendChild(script);
-  setTimeout(()=>{if(window[cbName]){delete window[cbName];}},5000);
+  setTimeout(()=>{try{delete window[cbName];}catch(e){}},5000);
 }
 
 // ===== PAGE NAV =====
