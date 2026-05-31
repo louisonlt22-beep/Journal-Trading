@@ -242,6 +242,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .sync-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px}
 .sync-dot.ok{background:var(--green)}.sync-dot.err{background:var(--red)}.sync-dot.idle{background:var(--text3)}
 
+/* ACCOUNT MENU */
+.ac-menu-item{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:8px;cursor:pointer;transition:background .15s;margin-bottom:4px}
+.ac-menu-item:hover{background:var(--bg3)}
+.ac-menu-item.active-ac{background:var(--red-bg);border:1px solid var(--red-border)}
+.ac-menu-item .ac-mn{font-size:13px;font-weight:500;color:var(--text)}
+.ac-menu-item .ac-mb{font-size:11px;color:var(--text2);font-family:var(--mono)}
 /* ACCOUNT MODAL */
 .ac-modal{max-width:480px}
 
@@ -296,14 +302,20 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 <!-- ===== APP ===== -->
 <div id="app">
   <div class="topbar">
-    <div class="topbar-left" onclick="backToLanding()">
+    <div class="topbar-left" onclick="goToLanding()" style="cursor:pointer">
       <div class="logo-btn">📈</div>
       <div>
         <div class="topbar-name">Le journal de trading de loustic</div>
       </div>
     </div>
     <div class="topbar-right">
-      <span class="topbar-account" id="topbar-account-name" onclick="backToLanding()">— Compte —</span>
+      <span class="topbar-account" id="topbar-account-name" onclick="toggleAccountMenu()">— Compte —</span>
+      <div id="account-menu" style="display:none;position:absolute;top:56px;right:80px;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:12px;min-width:280px;z-index:200;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+        <div style="font-size:12px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Mes comptes</div>
+        <div id="account-menu-list"></div>
+        <div style="height:1px;background:var(--border);margin:10px 0"></div>
+        <button onclick="openAccountModal(null)" style="width:100%;padding:9px 12px;background:var(--red);border:none;border-radius:8px;font-size:13px;font-weight:600;color:#fff;cursor:pointer;font-family:var(--font)">+ Nouveau compte</button>
+      </div>
       <span class="balance-tag" id="balance-display">100 000$</span>
       <button class="btn-new" onclick="openModal(null)">+ Nouveau Trade</button>
     </div>
@@ -561,6 +573,72 @@ let dir='', setup='', checks=Array(CHECKS.length).fill(false), levels={};
 let charts={}, editingId=null;
 
 // ===== ACCOUNTS =====
+function goToLanding(){
+  document.getElementById('landing').classList.remove('hidden');
+  document.getElementById('app').classList.remove('visible');
+  closeAccountMenu();
+}
+
+function toggleAccountMenu(){
+  const menu = document.getElementById('account-menu');
+  if(menu.style.display === 'none'){
+    renderAccountMenu();
+    menu.style.display = 'block';
+    setTimeout(()=>document.addEventListener('click', closeAccountMenuOutside), 0);
+  } else {
+    closeAccountMenu();
+  }
+}
+
+function closeAccountMenu(){
+  const menu = document.getElementById('account-menu');
+  if(menu) menu.style.display = 'none';
+  document.removeEventListener('click', closeAccountMenuOutside);
+}
+
+function closeAccountMenuOutside(e){
+  const menu = document.getElementById('account-menu');
+  const btn = document.getElementById('topbar-account-name');
+  if(menu && !menu.contains(e.target) && !btn.contains(e.target)){
+    closeAccountMenu();
+  }
+}
+
+function renderAccountMenu(){
+  const list = document.getElementById('account-menu-list');
+  if(!list) return;
+  if(!accounts.length){
+    list.innerHTML = '<div style="font-size:13px;color:var(--text3);padding:8px 12px">Aucun compte</div>';
+    return;
+  }
+  list.innerHTML = accounts.map(ac => `
+    <div class="ac-menu-item ${currentAccount && currentAccount.id===ac.id?'active-ac':''}" data-id="${ac.id}">
+      <div onclick="switchAccount('${ac.id}')" style="flex:1">
+        <div class="ac-mn">${ac.name} ${currentAccount && currentAccount.id===ac.id?'✓':''}</div>
+        <div class="ac-mb">${parseFloat(ac.balance).toLocaleString('fr-FR')} $</div>
+      </div>
+      <div style="display:flex;gap:4px">
+        <button onclick="event.stopPropagation();openAccountModal('${ac.id}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:4px 6px">✏️</button>
+        <button onclick="event.stopPropagation();deleteAccount('${ac.id}')" style="background:none;border:none;cursor:pointer;color:var(--text3);font-size:13px;padding:4px 6px">🗑</button>
+      </div>
+    </div>`).join('');
+}
+
+function switchAccount(id){
+  const ac = accounts.find(a => a.id === id);
+  if(!ac) return;
+  currentAccount = ac;
+  loadTrades();
+  document.getElementById('topbar-account-name').textContent = ac.name;
+  document.getElementById('balance-display').textContent = parseFloat(ac.balance).toLocaleString('fr-FR') + '$';
+  closeAccountMenu();
+  renderOverview();
+  initMonthSelects();
+  initAnnualSelects();
+  loadFromSheets();
+  showToast('✓ Compte : ' + ac.name);
+}
+
 function loadAccounts(){
   try{ accounts=JSON.parse(localStorage.getItem('loustic_accounts')||'[]'); }catch(e){ accounts=[]; }
   // Auto-select first account if exists
@@ -614,7 +692,12 @@ function saveAccount(){
   }
   saveAccounts();
   renderLanding();
+  renderAccountMenu();
   closeAccountModal();
+  // Auto select if first account
+  if(accounts.length === 1 && !currentAccount){
+    switchAccount(accounts[0].id);
+  }
 }
 
 function deleteAccount(id){
@@ -634,8 +717,7 @@ function selectAccount(id){
 }
 
 function backToLanding(){
-  // just show account modal
-  openAccountModal(null);
+  goToLanding();
 }
 
 // ===== TRADES DATA =====
@@ -1374,10 +1456,14 @@ window.addEventListener('load', function(){
     enterBtn.addEventListener('click', function(){
       document.getElementById('landing').classList.add('hidden');
       document.getElementById('app').classList.add('visible');
-      renderOverview();
-      initMonthSelects();
-      initAnnualSelects();
-      loadFromSheets();
+      if(accounts.length > 0 && !currentAccount){
+        switchAccount(accounts[0].id);
+      } else {
+        renderOverview();
+        initMonthSelects();
+        initAnnualSelects();
+        loadFromSheets();
+      }
     });
   }
   loadAccounts();
