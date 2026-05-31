@@ -256,11 +256,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 /* GALLERY */
 .gallery-week{margin-bottom:1.5rem}
 .gallery-week-title{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(480px,1fr));gap:16px}
 .gallery-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .15s}
 .gallery-card:hover{border-color:var(--border2)}
-.gallery-img{width:100%;height:180px;object-fit:cover;display:block}
-.gallery-img-placeholder{width:100%;height:180px;background:var(--bg4);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:13px;gap:6px}
+.gallery-img{width:100%;height:280px;object-fit:cover;display:block;cursor:pointer}
+.gallery-img-placeholder{width:100%;height:280px;background:var(--bg4);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text3);font-size:13px;gap:6px}
 .gallery-info{padding:10px 12px}
 
 /* FILTER ROW */
@@ -384,7 +384,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 
   /* GALLERY */
   .gallery-grid{grid-template-columns:1fr}
-  .gallery-img{height:160px}
+  .gallery-img{height:220px}
 
   /* ALERT BANNER */
   .alert-banner{font-size:13px;padding:10px 12px}
@@ -771,6 +771,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 </div>
 
 <div class="confirm-toast" id="toast">✓ Enregistré !</div>
+<div id="lightbox" onclick="closeLightbox()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:500;align-items:center;justify-content:center;cursor:zoom-out;padding:1rem">
+  <img id="lightbox-img" style="max-width:95%;max-height:90vh;border-radius:8px;object-fit:contain" alt="">
+  <a id="lightbox-link" href="#" target="_blank" onclick="event.stopPropagation()" style="position:fixed;bottom:2rem;left:50%;transform:translateX(-50%);color:#fff;font-size:14px;background:rgba(255,255,255,.15);padding:8px 20px;border-radius:20px;text-decoration:none">📊 Ouvrir sur TradingView →</a>
+</div>
   <button class="fab-new" id="fab-btn" aria-label="Nouveau trade">+</button>
 
 <script>
@@ -1534,7 +1538,7 @@ function renderGallery(){
       <div class="gallery-grid">${wt.map(t=>{
         const snap=t.tv.includes('tradingview.com/x/')?'https://s3.tradingview.com/snapshots/'+t.tv.split('/x/')[1].replace('/','').toLowerCase()+'.png':'';
         return `<div class="gallery-card">
-          ${snap?`<img class="gallery-img" src="${snap}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
+          ${snap?`<img class="gallery-img" src="${snap}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="" onclick="openLightbox('${snap}','${tv}')">
           <div class="gallery-img-placeholder" style="display:none">📊 <a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a></div>`
           :`<div class="gallery-img-placeholder">📊 <a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a></div>`}
           <div class="gallery-info">
@@ -1711,7 +1715,7 @@ function renderGallery(){
       const statusCls = status==='WIN'?'b-win':status==='LOSS'?'b-loss':'b-be';
       return `<div class="gallery-card">
         ${snap
-          ? `<img class="gallery-img" src="${snap}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt=""><div class="gallery-img-placeholder" style="display:none">${tv?`<a href="${tv}" target="_blank" style="color:var(--blue)">Voir TV →</a>`:'Pas de capture'}</div>`
+          ? `<img class="gallery-img" src="${snap}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="" onclick="openLightbox('${snap}','${tv}')"><div class="gallery-img-placeholder" style="display:none">${tv?`<a href="${tv}" target="_blank" style="color:var(--blue)">Voir TV →</a>`:'Pas de capture'}</div>`
           : tv
             ? `<div class="gallery-img-placeholder"><a href="${tv}" target="_blank" style="color:var(--blue)">📊 Voir sur TradingView →</a></div>`
             : `<div class="gallery-img-placeholder" style="color:var(--text3)">📊 Pas de capture</div>`
@@ -1847,6 +1851,24 @@ function exportWeeklyPDF(){
   </body></html>`;
   const w = window.open('','_blank'); w.document.write(html); w.document.close(); setTimeout(()=>w.print(),500);
 }
+
+// ===== LIGHTBOX =====
+function openLightbox(src, tv){
+  const lb = document.getElementById('lightbox');
+  const img = document.getElementById('lightbox-img');
+  const link = document.getElementById('lightbox-link');
+  if(!lb||!img) return;
+  img.src = src;
+  if(link) link.href = tv || '#';
+  lb.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+function closeLightbox(){
+  const lb = document.getElementById('lightbox');
+  if(lb) lb.style.display = 'none';
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLightbox(); });
 
 // ===== ANALYSIS+ =====
 function renderAnalysis(){
