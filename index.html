@@ -85,29 +85,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .nav-btn.active{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
 
 /* MAIN */
-.main{padding:0;max-width:1400px;margin:0 auto;overflow-x:hidden;overflow-y:visible}
+.main{padding:0;max-width:1400px;margin:0 auto}
 .main>.pages-container>.page{padding:1.5rem 2rem}
-.pages-container{
-  display:flex;
-  transition:transform .32s cubic-bezier(.4,0,.2,1);
-  will-change:transform;
-  width:100%;
-  align-items:flex-start;
-}
-.page{
-  flex:0 0 100%;
-  width:100%;
-  min-width:100%;
-  display:block;
-  opacity:0;
-  pointer-events:none;
-  transition:opacity .32s ease;
-  overflow:visible;
-}
-.page.active{
-  opacity:1;
-  pointer-events:auto;
-}
+.pages-container{width:100%;}
+.page{display:none;}
+.page.active{display:block;animation:fadeIn .25s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.page.slide-left{animation:slideFromRight .28s cubic-bezier(.4,0,.2,1);}
+.page.slide-right{animation:slideFromLeft .28s cubic-bezier(.4,0,.2,1);}
+@keyframes slideFromRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideFromLeft{from{opacity:0;transform:translateX(-40px)}to{opacity:1;transform:translateX(0)}}
 
 /* CARDS */
 .cards4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:1.5rem}
@@ -1017,22 +1004,21 @@ function updatePageIdx(name){
   if(idx >= 0) currentPageIdx = idx;
 }
 
-function slideTo(idx, animate){
-  const container = document.getElementById('pages-container');
-  if(!container) return;
-  if(animate === false) container.style.transition = 'none';
-  else container.style.transition = 'transform .32s cubic-bezier(.4,0,.2,1)';
-  container.style.transform = 'translateX(-' + (idx * 100) + '%)';
-}
 
-function showPage(name,btn){
+
+function showPage(name,btn,dir){
+  const oldIdx=currentPageIdx;
   updatePageIdx(name);
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p=>{p.classList.remove('active','slide-left','slide-right');});
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   const pg=document.getElementById('page-'+name);
-  if(pg)pg.classList.add('active');
+  if(pg){
+    pg.classList.add('active');
+    if(dir==='next') pg.classList.add('slide-left');
+    else if(dir==='prev') pg.classList.add('slide-right');
+    else pg.classList.add(currentPageIdx>oldIdx?'slide-left':'slide-right');
+  }
   if(btn)btn.classList.add('active');
-  slideTo(currentPageIdx);
   window.scrollTo({top:0,behavior:'smooth'});
   if(name==='overview')renderOverview();
   if(name==='monthly'){initMonthSelects();renderMonthly();}
@@ -1912,161 +1898,57 @@ function navigateToPage(direction){
     let newIdx = currentPageIdx;
     if(direction==='next' && currentPageIdx<PAGES_ORDER.length-1) newIdx++;
     else if(direction==='prev' && currentPageIdx>0) newIdx--;
-    else{ slideTo(currentPageIdx); return; }
+    else return;
     const name=PAGES_ORDER[newIdx];
     const btn=document.querySelector('[data-page="'+name+'"]');
-    showPage(name, btn);
+    showPage(name, btn, direction);
     if(btn) btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   }catch(err){}
 }
 
 function initSwipe(){
   try{
-    const container = document.getElementById('pages-container');
-    if(!container) return;
-    let startX=0, startY=0, startTime=0, dragging=false, currentDrag=0;
-    const W = ()=> window.innerWidth;
+    let startX=0,startY=0,startTime=0,isDown=false;
 
-    // Init position
-    slideTo(0, false);
+    // Touch (mobile)
+    document.addEventListener('touchstart',function(e){
+      startX=e.touches[0].clientX;startY=e.touches[0].clientY;startTime=Date.now();
+    },{passive:true});
+    document.addEventListener('touchend',function(e){
+      const dx=e.changedTouches[0].clientX-startX;
+      const dy=e.changedTouches[0].clientY-startY;
+      const dt=Date.now()-startTime;
+      if(Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.8&&dt<400){
+        navigateToPage(dx<0?'next':'prev');
+      }
+    },{passive:true});
 
-    // ---- TOUCH (mobile) ----
-    container.addEventListener('touchstart', function(e){
-      try{
-        startX=e.touches[0].clientX;
-        startY=e.touches[0].clientY;
-        startTime=Date.now();
-        dragging=false;
-        currentDrag=0;
-        container.style.transition='none';
-      }catch(err){}
-    }, {passive:true});
-
-    container.addEventListener('touchmove', function(e){
-      try{
-        const dx=e.touches[0].clientX-startX;
-        const dy=e.touches[0].clientY-startY;
-        if(!dragging && Math.abs(dx)>8 && Math.abs(dx)>Math.abs(dy)){
-          dragging=true;
-        }
-        if(dragging){
-          currentDrag=dx;
-          const base=currentPageIdx*W();
-          const resistance=0.25;
-          let offset=base-dx;
-          // Add resistance at edges
-          if((dx>0 && currentPageIdx===0)||(dx<0 && currentPageIdx===PAGES_ORDER.length-1)){
-            offset=base-dx*resistance;
-          }
-          container.style.transform='translateX(-'+offset+'px)';
-        }
-      }catch(err){}
-    }, {passive:true});
-
-    container.addEventListener('touchend', function(e){
-      try{
-        const dx=e.changedTouches[0].clientX-startX;
-        const dy=e.changedTouches[0].clientY-startY;
-        const dt=Date.now()-startTime;
-        const vel=Math.abs(dx)/dt;
-        container.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';
-        if(dragging && (Math.abs(dx)>W()*0.3 || vel>0.5)){
-          navigateToPage(dx<0?'next':'prev');
-        } else {
-          slideTo(currentPageIdx);
-        }
-        dragging=false;
-      }catch(err){}
-    }, {passive:true});
-
-    // ---- MOUSE drag (Mac trackpad click+drag) ----
-    container.addEventListener('mousedown', function(e){
-      try{
-        if(e.button!==0) return;
-        startX=e.clientX; startY=e.clientY; startTime=Date.now();
-        isPointerDown=true; dragging=false;
-        container.style.transition='none';
-        e.preventDefault();
-      }catch(err){}
+    // Mouse drag (Mac)
+    document.addEventListener('mousedown',function(e){
+      if(e.target.closest('.modal-overlay,.modal,.nav,.topbar')) return;
+      isDown=true;startX=e.clientX;startY=e.clientY;startTime=Date.now();
     });
-    window.addEventListener('mousemove', function(e){
-      try{
-        if(!isPointerDown) return;
-        const dx=e.clientX-startX;
-        const dy=e.clientY-startY;
-        if(!dragging && Math.abs(dx)>8 && Math.abs(dx)>Math.abs(dy)) dragging=true;
-        if(dragging){
-          currentDrag=dx;
-          const base=currentPageIdx*W();
-          let offset=base-dx;
-          if((dx>0&&currentPageIdx===0)||(dx<0&&currentPageIdx===PAGES_ORDER.length-1)) offset=base-dx*0.25;
-          container.style.transform='translateX(-'+offset+'px)';
-        }
-      }catch(err){}
-    });
-    window.addEventListener('mouseup', function(e){
-      try{
-        if(!isPointerDown) return;
-        const dx=e.clientX-startX;
-        const dt=Date.now()-startTime;
-        const vel=Math.abs(dx)/dt;
-        isPointerDown=false;
-        container.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';
-        if(dragging && (Math.abs(dx)>W()*0.25 || vel>0.4)){
-          navigateToPage(dx<0?'next':'prev');
-        } else if(dragging){
-          slideTo(currentPageIdx);
-        }
-        dragging=false;
-      }catch(err){}
+    document.addEventListener('mouseup',function(e){
+      if(!isDown)return;isDown=false;
+      const dx=e.clientX-startX;
+      const dy=e.clientY-startY;
+      const dt=Date.now()-startTime;
+      if(Math.abs(dx)>80&&Math.abs(dx)>Math.abs(dy)*2&&dt<500){
+        navigateToPage(dx<0?'next':'prev');
+      }
     });
 
-    // ---- TRACKPAD horizontal scroll (Mac) ----
-    let wheelLock=false, wheelTimeout;
-    window.addEventListener('wheel', function(e){
-      try{
-        if(wheelLock) return;
-        if(Math.abs(e.deltaX)>Math.abs(e.deltaY)*1.5 && Math.abs(e.deltaX)>15){
-          clearTimeout(wheelTimeout);
-          wheelTimeout=setTimeout(function(){
-            if(Math.abs(e.deltaX)>30){
-              wheelLock=true;
-              navigateToPage(e.deltaX>0?'next':'prev');
-              setTimeout(()=>{ wheelLock=false; }, 500);
-            }
-          }, 50);
-        }
-      }catch(err){}
-    }, {passive:true});
-
+    // Trackpad (Mac)
+    let wLock=false;
+    document.addEventListener('wheel',function(e){
+      if(wLock)return;
+      if(Math.abs(e.deltaX)>Math.abs(e.deltaY)*1.5&&Math.abs(e.deltaX)>25){
+        wLock=true;
+        navigateToPage(e.deltaX>0?'next':'prev');
+        setTimeout(()=>{wLock=false;},600);
+      }
+    },{passive:true});
   }catch(err){}
 }
 
 
-
-// INIT
-window.addEventListener('load', function(){
-  initCandles();
-  var enterBtn = document.getElementById('btn-enter');
-  if(enterBtn){
-    enterBtn.addEventListener('click', function(){
-      document.getElementById('landing').classList.add('hidden');
-      document.getElementById('app').classList.add('visible');
-      if(accounts.length > 0 && !currentAccount){
-        switchAccount(accounts[0].id);
-      } else {
-        renderOverview();
-        initMonthSelects();
-        initAnnualSelects();
-        loadFromSheets();
-      }
-    });
-  }
-  loadAccounts();
-  const fab=document.getElementById('fab-btn');
-  if(fab) fab.addEventListener('click',()=>openModal(null));
-  initSwipe();
-});
-</script>
-</body>
-</html>
