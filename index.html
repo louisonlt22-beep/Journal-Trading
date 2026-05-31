@@ -1515,9 +1515,9 @@ function renderHistory(){
 
 // ===== GALLERY =====
 function renderGallery(){
-  const closed=trades.filter(t=>t.status!=='OPEN'&&t.tv);
+  const closed=trades.filter(t=>t.status!=='OPEN');
   const ct=document.getElementById('gallery-container');
-  if(!closed.length){ct.innerHTML='<div class="empty">Aucun trade clôturé avec lien TradingView</div>';return;}
+  if(!closed.length){ct.innerHTML='<div class="empty">Aucun trade clôturé</div>';return;}
   const weeks={};
   closed.forEach(t=>{
     const d=new Date(t.datetime);const monday=new Date(d);
@@ -1533,8 +1533,9 @@ function renderGallery(){
         const snap=t.tv.includes('tradingview.com/x/')?'https://s3.tradingview.com/snapshots/'+t.tv.split('/x/')[1].replace('/','').toLowerCase()+'.png':'';
         return `<div class="gallery-card">
           ${snap?`<img class="gallery-img" src="${snap}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" alt="">
-          <div class="gallery-img-placeholder" style="display:none">📊 <a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a></div>`
-          :`<div class="gallery-img-placeholder">📊 <a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a></div>`}
+          <div class="gallery-img-placeholder" style="display:none">${t.tv?`<a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a>`:'Pas de lien TV'}</div>`
+          :t.tv?`<div class="gallery-img-placeholder">📊 <a href="${t.tv}" target="_blank" style="color:var(--blue)">Voir sur TradingView</a></div>`
+          :`<div class="gallery-img-placeholder" style="color:var(--text3)">📊 Pas de capture</div>`}
           <div class="gallery-info">
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <span class="badge b-${(t.setup||'').toLowerCase()}">${t.setup}</span>
@@ -1552,11 +1553,12 @@ function renderGallery(){
 function initWeeklySelect(){
   const sel=document.getElementById('sel-weekly-week');
   if(!sel)return;
-  const weeks=[...new Set(trades.map(t=>{
+  const weeks=[...new Set(trades.filter(t=>t.datetime).map(t=>{
     const d=new Date(t.datetime);
+    if(isNaN(d.getTime()))return null;
     const monday=new Date(d);monday.setDate(d.getDate()-(d.getDay()===0?6:d.getDay()-1));
     return monday.toISOString().split('T')[0];
-  }))].sort().reverse();
+  }).filter(Boolean))].sort().reverse();
   sel.innerHTML=weeks.map(w=>{
     const d=new Date(w);const end=new Date(w);end.setDate(end.getDate()+6);
     return `<option value="${w}">Sem. ${d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})} - ${end.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'})}</option>`;
