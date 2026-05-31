@@ -670,11 +670,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <div id="alert-pts" class="alert">⚠️ Score insuffisant — il te faut au moins 3 points pour MB ou BB.</div>
   <div class="modal-grid">
     <div class="fg"><label>Paire</label>
-      <select id="f-pair">
+      <select id="f-pair" onchange="renderLevelEntries();autoFillLevelFields()">
         <option value="">Sélectionner</option>
-        <option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option><option>GBPJPY</option>
-        <option>AUDUSD</option><option>USDCAD</option><option>USDCHF</option><option>EURGBP</option>
-        <option>EURJPY</option><option>NZDUSD</option>
+        <option>EURUSD</option><option>GBPUSD</option>
       </select>
     </div>
     <div class="fg"><label>Direction</label>
@@ -694,11 +692,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <div id="pts-section" style="display:none;margin-bottom:1rem">
     <div style="background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:1rem">
       <div class="pts-header">
-        <span style="font-size:13px;font-weight:600">🎯 Validation par niveaux</span>
+        <span style="font-size:13px;font-weight:600">🎯 Validation par niveaux (DXY + Paire)</span>
         <span style="font-size:13px;color:var(--text2)">Score : <span class="pts-score" id="pts-val" style="color:var(--red)">0.0</span> / 3</span>
       </div>
-      <div class="lvl-grid" id="lvl-grid"></div>
-      <div style="font-size:12px;color:var(--text3)">D/H4 = 1pt · H1 = 0.5pt · Min. 3 pts requis</div>
+      <div id="lvl-entries" style="margin-bottom:8px"></div>
+      <button onclick="addLevelEntry()" style="width:100%;padding:8px;background:none;border:1px dashed var(--border2);border-radius:8px;color:var(--text2);font-size:13px;cursor:pointer;font-family:var(--font)">+ Ajouter un niveau</button>
+      <div style="font-size:12px;color:var(--text3);margin-top:8px">D = 1pt · H4 = 1pt · H1 = 0.5pt · Min. 3 pts requis</div>
     </div>
   </div>
   <div class="modal-grid">
@@ -710,20 +709,55 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <div id="rr-strip" class="rr-strip" style="display:none;margin-bottom:1rem">
     <div class="rr-item"><div class="ri-label">Pips SL</div><div class="ri-val neg" id="rr-sl">—</div></div>
     <div class="rr-item"><div class="ri-label">Pips TP</div><div class="ri-val pos" id="rr-tp">—</div></div>
-    <div class="rr-item"><div class="ri-label">R:R</div><div class="ri-val" style="color:var(--blue)" id="rr-ratio">—</div></div>
+    <div class="rr-item"><div class="ri-label">RR Prévu</div><div class="ri-val" style="color:var(--blue)" id="rr-ratio">—</div></div>
     <div class="rr-item"><div class="ri-label">Lots</div><div class="ri-val" style="color:var(--amber)" id="rr-lots">—</div></div>
+  </div>
+  <div id="rr-real-wrap" style="display:none;background:var(--bg4);border:1px solid var(--border2);border-radius:8px;padding:10px 14px;margin-bottom:1rem;display:flex;align-items:center;gap:8px">
+    <span style="font-size:12px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em">RR Réel :</span>
+    <span style="font-size:20px;font-weight:700;font-family:var(--mono)" id="rr-real">—</span>
   </div>
   <div class="modal-grid">
     <div class="fg"><label>Date et heure</label><input type="datetime-local" id="f-datetime"></div>
     <div class="fg"><label>Session</label>
       <select id="f-session"><option value="">—</option><option>Londres (8h-12h)</option><option>Overlap LDN/NY (13h-17h)</option><option>New York (14h-21h)</option></select>
     </div>
-    <div class="fg"><label>Statut</label>
-      <select id="f-status"><option value="WIN">✓ Win</option><option value="LOSS">✗ Loss</option><option value="BE">= Break Even</option><option value="OPEN">⏳ Ouvert</option></select>
+    <div class="fg full"><label>Statut</label>
+      <select id="f-status" onchange="toggleCloseDate()">
+        <option value="WIN">✓ Win (TP)</option>
+        <option value="LOSS">✗ Loss (SL)</option>
+        <option value="BE">= Break Even</option>
+        <option value="MANUAL">✋ Fermé manuellement</option>
+        <option value="OPEN">⏳ Ouvert</option>
+      </select>
     </div>
-    <div class="fg"><label>Prix de sortie</label><input type="number" id="f-exit" placeholder="1.09500" step="0.00001"></div>
-    <div class="fg full"><label>Niveaux DXY</label><input type="text" id="f-dxy" placeholder="OB H4 / FVG D1..."></div>
-    <div class="fg full"><label>Niveaux de la paire</label><input type="text" id="f-levels-pair" placeholder="OTE / FVG D1..."></div>
+    <div class="fg full" id="manual-close-fields" style="display:none">
+      <label>Prix de sortie réel</label>
+      <input type="number" id="f-exit" placeholder="ex: 1.09200" step="0.00001" oninput="calcRR()">
+    </div>
+    <div class="fg full" id="close-date-field" style="display:none">
+      <label>Date et heure de fermeture</label>
+      <input type="datetime-local" id="f-close-datetime">
+    </div>
+    <div class="fg full">
+      <div onclick="toggleSection('dxy-body')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 0">
+        <label style="cursor:pointer;margin:0">Niveaux DXY</label>
+        <span id="dxy-arrow" style="color:var(--text2);font-size:14px;transition:transform .2s">▼</span>
+      </div>
+      <div id="dxy-body" style="display:none">
+        <input type="text" id="f-dxy" placeholder="Ex: FVG D, OB H4, BPR H1..." style="font-size:14px;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg4);color:var(--text);width:100%;font-family:var(--font);margin-bottom:6px">
+        <div style="font-size:11px;color:var(--text3)">Exemples : FVG D · OB H4 · BPR H1 · GPL D · OTE H4...</div>
+      </div>
+    </div>
+    <div class="fg full">
+      <div onclick="toggleSection('pair-body')" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;padding:8px 0">
+        <label style="cursor:pointer;margin:0" id="pair-section-label">Niveaux de la Paire</label>
+        <span id="pair-arrow" style="color:var(--text2);font-size:14px;transition:transform .2s">▼</span>
+      </div>
+      <div id="pair-body" style="display:none">
+        <input type="text" id="f-levels-pair" placeholder="Ex: OTE H1, FVG EX D, RB H4..." style="font-size:14px;padding:9px 12px;border-radius:8px;border:1px solid var(--border2);background:var(--bg4);color:var(--text);width:100%;font-family:var(--font);margin-bottom:6px">
+        <div style="font-size:11px;color:var(--text3)">Exemples : OTE H1 · FVG EX D · RB H4 · OB EX H1...</div>
+      </div>
+    </div>
   </div>
   <div id="pts-checklist-section" style="display:none;margin-bottom:1rem">
     <div style="font-size:13px;font-weight:600;margin-bottom:8px">✅ Checklist de discipline</div>
@@ -778,7 +812,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
   <button class="fab-new" id="fab-btn" aria-label="Nouveau trade">+</button>
 
 <script>
-const LEVELS=['FVG','OB','BPR','GPL','FVG EX','OTE','OB EX','RB'];
+const LEVELS=['FVG','OB','BPR','GPL','FVG EX','OTE','OB EX','RB','VI'];
 const CHECKS=['Trade pris entre 8h et 21h','Setup sous PDL / au-dessus PDH (MB/BB)','QM formé autour d\'un DR','Score ≥ 3 points (MB/BB)','Pas de BE — SL ou TP','Trade coupé 20h-21h si hors fonda'];
 const PSYCH=['','Très mauvaise','Mauvaise','Moyenne','Bonne','Excellente'];
 const MONTHS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
@@ -1065,8 +1099,15 @@ function openModal(id){
     document.getElementById('f-datetime').value=t.datetime||'';
     document.getElementById('f-session').value=t.session||'';
     document.getElementById('f-status').value=t.status||'WIN';
+    // Parse and prefill DXY levels
+    
+    if(t.dxy){ t.dxy.split(' / ').forEach(s=>{ const p=s.trim().split(' '); if(p[0]){ levelsDxy[p[0]]=true; levelsDxy[p[0]+'_tf']=p[1]||'D'; } }); }
+    if(t.levelsPair){ t.levelsPair.split(' / ').forEach(s=>{ const p=s.trim().split(' '); if(p[0]){ levelsPairObj[p[0]]=true; levelsPairObj[p[0]+'_tf']=p[1]||'D'; } }); }
+    initLevelGrids();
     document.getElementById('f-dxy').value=t.dxy||'';
     document.getElementById('f-levels-pair').value=t.levelsPair||'';
+    if(t.closeDatetime) document.getElementById('f-close-datetime').value=t.closeDatetime||'';
+    toggleCloseDate();
     document.getElementById('f-tv').value=t.tv||'';
     document.getElementById('f-notes').value=t.notes||'';
     document.getElementById('f-psych').value=t.psych||3;
@@ -1074,9 +1115,14 @@ function openModal(id){
     selDir(t.direction||'BUY');
     selSetup(t.setup||'MB');
     if(t.planChecks)t.planChecks.forEach((v,i)=>{checks[i]=v;});
-    levels={};
-    if(t.lvls)t.lvls.forEach(l=>{const m=l.match(/^(.+)\((.+)\)$/);if(m){levels[m[1]]=true;levels[m[1]+'_tf']=m[2];}});
-    if(t.pts)renderLevels();
+    levels={};levelEntries=[];
+    if(t.lvls && typeof t.lvls === 'string'){
+      t.lvls.split(', ').forEach(s=>{
+        const m=s.match(/^(.+) (.+) \((.+)\)$/);
+        if(m) addLevelEntry(m[1],m[2],m[3]);
+      });
+    }
+    if(t.pts)renderLevelEntries();
     initChecks();
     calcRR();
   } else {
@@ -1100,7 +1146,7 @@ function resetModalFields(){
   document.getElementById('rr-strip').style.display='none';
   document.getElementById('pts-section').style.display='none';
   document.getElementById('pts-checklist-section').style.display='none';
-  dir=''; setup=''; levels={}; checks=Array(CHECKS.length).fill(false);
+  dir=''; setup=''; levels={}; levelEntries=[]; checks=Array(CHECKS.length).fill(false); 
   ['b-buy','b-sell','b-mb','b-bb','b-qm'].forEach(id=>{const b=document.getElementById(id);b.style.background='';b.style.color='';b.style.borderColor='';});
 }
 
@@ -1121,18 +1167,133 @@ function selSetup(s){
   initChecks();
 }
 
-function renderLevels(){
-  document.getElementById('lvl-grid').innerHTML=LEVELS.map(l=>{
-    const on=levels[l];const tf=levels[l+'_tf']||'D/H4';
-    return `<button class="lvl-btn${on?' on':''}" onclick="toggleLvl('${l}')"><span>${l}</span><select onclick="event.stopPropagation()" onchange="setTf('${l}',this.value)"><option${tf==='D/H4'?' selected':''}>D/H4</option><option${tf==='H1'?' selected':''}>H1</option></select></button>`;
-  }).join('');
+// Multi-entry level system
+let levelEntries = []; // [{level:'FVG', tf:'H4', zone:'paire'}]
+
+function addLevelEntry(level, tf, zone){
+  const id = 'le_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  levelEntries.push({id, level:level||'FVG', tf:tf||'D', zone:zone||'paire'});
+  renderLevelEntries();
+}
+
+function removeLevelEntry(id){
+  levelEntries = levelEntries.filter(e=>e.id!==id);
+  renderLevelEntries();
+}
+
+function updateLevelEntry(id, field, value){
+  const entry = levelEntries.find(e=>e.id===id);
+  if(entry) entry[field] = value;
   updatePts();
 }
 
-function toggleLvl(l){levels[l]=!levels[l];if(!levels[l+'_tf'])levels[l+'_tf']='D/H4';renderLevels();}
-function setTf(l,v){levels[l+'_tf']=v;updatePts();}
-function getPts(){let p=0;LEVELS.forEach(l=>{if(levels[l])p+=levels[l+'_tf']==='H1'?0.5:1;});return p;}
-function updatePts(){const p=getPts();const el=document.getElementById('pts-val');if(el){el.textContent=p.toFixed(1);el.style.color=p>=3?'var(--green)':'var(--red)';}}
+function renderLevelEntries(){
+  const ct = document.getElementById('lvl-entries');
+  if(!ct) return;
+  if(!levelEntries.length){
+    ct.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 0">Aucun niveau ajouté — clique sur + pour ajouter</div>';
+    updatePts();
+    return;
+  }
+  ct.innerHTML = levelEntries.map(e=>`
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <select onchange="updateLevelEntry('${e.id}','level',this.value)" style="flex:1;font-size:13px;padding:7px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-family:var(--font)">
+        ${LEVELS.map(l=>`<option value="${l}"${e.level===l?' selected':''}>${l}</option>`).join('')}
+      </select>
+      <select onchange="updateLevelEntry('${e.id}','tf',this.value)" style="width:70px;font-size:13px;padding:7px 8px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-family:var(--font)">
+        <option${e.tf==='D'?' selected':''}>D</option>
+        <option${e.tf==='H4'?' selected':''}>H4</option>
+        <option${e.tf==='H1'?' selected':''}>H1</option>
+        <option${e.tf==='M15'?' selected':''}>M15</option>
+      </select>
+      <select onchange="updateLevelEntry('${e.id}','zone',this.value)" style="width:80px;font-size:13px;padding:7px 8px;border-radius:8px;border:1px solid var(--border2);background:var(--bg3);color:var(--text);font-family:var(--font)">
+        <option value="paire"${e.zone==='paire'?' selected':''}>${getPairLabel()}</option>
+        <option value="dxy"${e.zone==='dxy'?' selected':''}>DXY</option>
+      </select>
+      <button onclick="removeLevelEntry('${e.id}')" style="width:30px;height:30px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;font-size:14px;flex-shrink:0">✕</button>
+    </div>`).join('');
+  updatePts();
+}
+
+function renderLevels(){ renderLevelEntries(); }
+function toggleLvl(l){ addLevelEntry(l); }
+function setTf(l,v){}
+
+function getPts(){
+  let p=0;
+  levelEntries.forEach(e=>{
+    if(e.tf==='H1') p+=0.5;
+    else p+=1; // D, H4, M15 = 1pt
+  });
+  return p;
+}
+
+function updatePts(){
+  const p=getPts();
+  const el=document.getElementById('pts-val');
+  if(el){el.textContent=p.toFixed(1);el.style.color=p>=3?'var(--green)':'var(--red)';}
+  // Auto-fill DXY and Paire text fields
+  autoFillLevelFields();
+}
+
+function getPairLabel(){
+  const pair = document.getElementById('f-pair');
+  if(!pair||!pair.value) return 'Paire';
+  return pair.value.includes('EUR')?'EU':'GU';
+}
+
+function autoFillLevelFields(){
+  const pairLabel = getPairLabel();
+  const dxyEntries = levelEntries.filter(e=>e.zone==='dxy');
+  const paireEntries = levelEntries.filter(e=>e.zone==='paire');
+  const dxyStr = dxyEntries.map(e=>e.level+' '+e.tf).join(', ');
+  const paireStr = paireEntries.map(e=>e.level+' '+e.tf).join(', ');
+  const dxyField = document.getElementById('f-dxy');
+  const pairField = document.getElementById('f-levels-pair');
+  if(dxyField) dxyField.value = dxyStr;
+  if(pairField) pairField.value = paireStr;
+  // Auto-open sections if content
+  if(dxyStr){
+    const b=document.getElementById('dxy-body');if(b)b.style.display='block';
+    const a=document.getElementById('dxy-arrow');if(a)a.style.transform='rotate(180deg)';
+  }
+  if(paireStr){
+    const b=document.getElementById('pair-body');if(b)b.style.display='block';
+    const a=document.getElementById('pair-arrow');if(a)a.style.transform='rotate(180deg)';
+  }
+  // Update pair label in section header
+  const pairHeader = document.getElementById('pair-section-label');
+  if(pairHeader) pairHeader.textContent = 'Niveaux '+pairLabel;
+}
+
+function getLvlsString(){
+  return levelEntries.map(e=>e.level+' '+e.tf+' ('+e.zone+')').join(', ');
+}
+
+function toggleSection(id){
+  const body = document.getElementById(id);
+  if(!body) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  const prefix = id.replace('-body','');
+  const arrow = document.getElementById(prefix+'-arrow');
+  if(arrow) arrow.style.transform = isOpen ? '' : 'rotate(180deg)';
+}
+
+function toggleCloseDate(){
+  const status = document.getElementById('f-status').value;
+  const isManual = status === 'MANUAL';
+  const isOpen = status === 'OPEN';
+  const manualFields = document.getElementById('manual-close-fields');
+  const closeDate = document.getElementById('close-date-field');
+  if(manualFields) manualFields.style.display = isManual ? 'block' : 'none';
+  if(closeDate) closeDate.style.display = (!isOpen && status !== 'OPEN') ? 'block' : 'none';
+  if(!isManual){
+    const exitField = document.getElementById('f-exit');
+    if(exitField) exitField.value = '';
+  }
+  calcRR();
+}
 
 function initChecks(){
   document.getElementById('chk-list').innerHTML=CHECKS.map((t,i)=>
@@ -1145,6 +1306,9 @@ function calcRR(){
   const entry=parseFloat(document.getElementById('f-entry').value);
   const sl=parseFloat(document.getElementById('f-sl').value);
   const tp=parseFloat(document.getElementById('f-tp').value);
+  const exitField=document.getElementById('f-exit');
+  const exit=exitField?parseFloat(exitField.value):NaN;
+  const status=document.getElementById('f-status')?document.getElementById('f-status').value:'';
   if(isNaN(entry)||isNaN(sl)){document.getElementById('rr-strip').style.display='none';return;}
   const mult=(entry<10)?10000:100;
   const pipsSL=Math.abs(entry-sl)*mult;
@@ -1153,10 +1317,32 @@ function calcRR(){
   document.getElementById('rr-strip').style.display='flex';
   document.getElementById('rr-sl').textContent=pipsSL.toFixed(1);
   document.getElementById('rr-lots').textContent=((bal*risk/100/pipsSL)/10).toFixed(2)+' lots';
+  // Planned RR from TP
   if(!isNaN(tp)){
     const pipsTP=Math.abs(tp-entry)*mult;
     document.getElementById('rr-tp').textContent=pipsTP.toFixed(1);
     document.getElementById('rr-ratio').textContent='1:'+(pipsTP/pipsSL).toFixed(2);
+  }
+  // Real RR from exit price (manual close)
+  const rrRealEl=document.getElementById('rr-real');
+  if(rrRealEl){
+    if(status==='MANUAL'&&!isNaN(exit)&&exit>0){
+      const dir=document.getElementById('b-buy').style.background?'BUY':'SELL';
+      const pipsExit=Math.abs(exit-entry)*mult;
+      const isBuy=(entry<exit);
+      const realRR=pipsExit/pipsSL*(isBuy?1:-1);
+      rrRealEl.textContent=(realRR>=0?'+':'')+realRR.toFixed(2)+'R';
+      rrRealEl.style.color=realRR>=0?'var(--green)':'var(--red)';
+      document.getElementById('rr-real-wrap').style.display='block';
+    } else if(status==='WIN'){
+      if(!isNaN(tp)){const pipsTP=Math.abs(tp-entry)*mult;rrRealEl.textContent='+'+(pipsTP/pipsSL).toFixed(2)+'R';rrRealEl.style.color='var(--green)';document.getElementById('rr-real-wrap').style.display='block';}
+    } else if(status==='LOSS'){
+      rrRealEl.textContent='-1R';rrRealEl.style.color='var(--red)';document.getElementById('rr-real-wrap').style.display='block';
+    } else if(status==='BE'){
+      rrRealEl.textContent='0R';rrRealEl.style.color='var(--text2)';document.getElementById('rr-real-wrap').style.display='block';
+    } else {
+      document.getElementById('rr-real-wrap').style.display='none';
+    }
   }
 }
 
@@ -1164,6 +1350,7 @@ function getRRData(){
   const entry=parseFloat(document.getElementById('f-entry').value);
   const sl=parseFloat(document.getElementById('f-sl').value);
   const tp=parseFloat(document.getElementById('f-tp').value);
+  const exitVal=parseFloat(document.getElementById('f-exit').value)||0;
   const status=document.getElementById('f-status').value;
   const risk=parseFloat(document.getElementById('f-risk').value)||1;
   const bal=currentAccount?parseFloat(currentAccount.balance):100000;
@@ -1171,18 +1358,25 @@ function getRRData(){
   const mult=(entry<10)?10000:100;
   const pipsSL=Math.abs(entry-sl)*mult;
   const pipsTP=isNaN(tp)?0:Math.abs(tp-entry)*mult;
-  const rr=pipsSL?pipsTP/pipsSL:0;
+  const rrPlanned=pipsSL?pipsTP/pipsSL:0;
   let realized=0,pnl=0;
-  if(status==='WIN'){realized=rr;pnl=bal*risk/100*rr;}
+  if(status==='WIN'){realized=rrPlanned;pnl=bal*risk/100*rrPlanned;}
   else if(status==='LOSS'){realized=-1;pnl=-bal*risk/100;}
-  return{pipsSL:+pipsSL.toFixed(1),pipsTP:+pipsTP.toFixed(1),rr:+rr.toFixed(2),realized:+realized.toFixed(2),pnl:+pnl.toFixed(2)};
+  else if(status==='BE'){realized=0;pnl=0;}
+  else if(status==='MANUAL'&&exitVal>0){
+    const pipsExit=Math.abs(exitVal-entry)*mult;
+    const isBuy=exitVal>entry;
+    realized=+(pipsExit/pipsSL*(isBuy?1:-1)).toFixed(2);
+    pnl=+(realized*bal*risk/100).toFixed(2);
+  }
+  return{pipsSL:+pipsSL.toFixed(1),pipsTP:+pipsTP.toFixed(1),rr:+rrPlanned.toFixed(2),realized:+realized.toFixed(2),pnl:+pnl.toFixed(2),exit:exitVal};
 }
 
 async function saveTrade(){
   const pair=document.getElementById('f-pair').value;
   const dt=document.getElementById('f-datetime').value;
   if(!pair||!dt||!dir||!setup){alert('Remplis : paire, date, direction et setup.');return;}
-  if((setup==='MB'||setup==='BB')&&getPts()<3){document.getElementById('alert-pts').style.display='block';return;}
+  if((setup==='MB'||setup==='BB')&&levelEntries.length>0&&getPts()<3){document.getElementById('alert-pts').style.display='block';return;}
   document.getElementById('alert-pts').style.display='none';
   const rrData=getRRData();
   const tradeData={
@@ -1195,12 +1389,13 @@ async function saveTrade(){
     exit:parseFloat(document.getElementById('f-exit').value)||0,
     risk:parseFloat(document.getElementById('f-risk').value)||1,
     dxy:document.getElementById('f-dxy').value,
+    closeDatetime:document.getElementById('f-close-datetime').value||'',
     levelsPair:document.getElementById('f-levels-pair').value,
     tv:document.getElementById('f-tv').value,
     notes:document.getElementById('f-notes').value,
     psych:parseInt(document.getElementById('f-psych').value),
     pts:(setup==='MB'||setup==='BB')?getPts():null,
-    lvls:LEVELS.filter(l=>levels[l]).map(l=>l+'('+levels[l+'_tf']+')'),
+    lvls:getLvlsString(),
     planScore:checks.filter(Boolean).length,
     planChecks:[...checks],
     ...rrData
@@ -1511,9 +1706,10 @@ function renderHistory(){
         <div class="trade-field"><div class="tl">Entrée</div><div class="tv">${t.entry||'—'}</div></div>
         <div class="trade-field"><div class="tl">SL</div><div class="tv neg">${t.sl||'—'}</div></div>
         <div class="trade-field"><div class="tl">TP</div><div class="tv pos">${t.tp||'—'}</div></div>
-        <div class="trade-field"><div class="tl">RR</div><div class="tv" style="color:var(--blue)">1:${t.rr||'—'}</div></div>
-        <div class="trade-field"><div class="tl">R réalisé</div><div class="tv ${(t.realized||0)>=0?'pos':'neg'}">${(t.realized||0)>=0?'+':''}${t.realized||0}R</div></div>
-        <div class="trade-field"><div class="tl">Date</div><div class="tv">${fmtDate(t.datetime)}</div></div>
+        <div class="trade-field"><div class="tl">RR Prévu</div><div class="tv" style="color:var(--blue)">1:${t.rr||'—'}</div></div>
+        <div class="trade-field"><div class="tl">RR Réel</div><div class="tv ${(t.realized||0)>=0?'pos':'neg'}">${(t.realized||0)>=0?'+':''}${t.realized||0}R</div></div>
+        <div class="trade-field"><div class="tl">Ouverture</div><div class="tv">${fmtDate(t.datetime)}</div></div>
+        ${t.closeDatetime?`<div class="trade-field"><div class="tl">Fermeture</div><div class="tv">${fmtDate(t.closeDatetime)}</div></div>`:''}
       </div>
       ${t.notes?`<div style="font-size:12px;color:var(--text2);margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${t.notes}</div>`:''}
     </div>`).join('');
