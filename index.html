@@ -1047,7 +1047,7 @@ function openModal(id){
   editingId=id;
   document.getElementById('modal').classList.remove('hidden');
   if(id){
-    const t=trades.find(x=>x.id===id);
+    const t=trades.find(x=>String(x.id)===String(id));
     if(!t)return;
     document.getElementById('modal-title').textContent='Modifier le Trade';
     document.getElementById('f-pair').value=t.pair||'';
@@ -1201,7 +1201,7 @@ async function saveTrade(){
   };
 
   if(editingId){
-    const idx=trades.findIndex(t=>t.id===editingId);
+    const idx=trades.findIndex(t=>String(t.id)===String(editingId));
     if(idx>=0){
       trades[idx]={...trades[idx],...tradeData};
       saveTrades();
@@ -1223,7 +1223,7 @@ async function saveTrade(){
 async function delTrade(id){
   if(!confirm('Supprimer ce trade ?'))return;
   await deleteFromSheets(id);
-  trades=trades.filter(t=>t.id!==id);
+  trades=trades.filter(t=>String(t.id)!==String(id));
   saveTrades();
   showToast('🗑 Trade supprimé');
   renderOverview();
@@ -1497,8 +1497,8 @@ function renderHistory(){
         <div style="display:flex;align-items:center;gap:8px">
           <span class="trade-pnl ${(t.pnl||0)>=0?'pos':'neg'}">${fmt$(t.pnl||0)}</span>
           ${t.tv?`<a href="${t.tv}" target="_blank" style="color:var(--blue);font-size:12px;text-decoration:none">📊</a>`:''}
-          <button class="btn-icon edit" data-id="${t.id}" onclick="openModal(+this.dataset.id)">✏️</button>
-          <button class="btn-icon" data-id="${t.id}" onclick="delTrade(+this.dataset.id)">🗑</button>
+          <button class="btn-icon edit" data-id="${t.id}" onclick="openModal(this.dataset.id)">✏️</button>
+          <button class="btn-icon" data-id="${t.id}" onclick="delTrade(this.dataset.id)">🗑</button>
         </div>
       </div>
       <div class="trade-meta">
