@@ -54,7 +54,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 
 /* TOPBAR */
 .fab-new{display:none}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 1.5rem;height:56px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;gap:8px}
 .topbar-left{display:flex;align-items:center;gap:10px;cursor:pointer}
 .logo-btn{width:32px;height:32px;background:var(--red);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;transition:opacity .15s}
 .logo-btn:hover{opacity:.8}
@@ -67,10 +67,22 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
 .btn-new:hover{opacity:.85}
 
 /* NAV */
-.nav{display:flex;gap:2px;padding:0 1rem;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto;position:sticky;top:56px;z-index:99}
-.nav-btn{padding:11px 14px;font-size:13px;font-weight:500;cursor:pointer;border:none;background:none;color:var(--text3);border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;font-family:var(--font);transition:all .15s}
-.nav-btn:hover{color:var(--text2)}
-.nav-btn.active{color:var(--red);border-bottom-color:var(--red)}
+.nav{
+  display:flex;gap:6px;padding:8px 12px;
+  background:var(--bg2);border-bottom:1px solid var(--border);
+  overflow-x:auto;position:sticky;top:56px;z-index:99;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.nav::-webkit-scrollbar{display:none}
+.nav-btn{
+  padding:6px 14px;font-size:12px;font-weight:500;cursor:pointer;
+  border:1px solid var(--border);background:var(--bg3);
+  color:var(--text2);border-radius:20px;
+  white-space:nowrap;font-family:var(--font);
+  transition:all .2s;flex-shrink:0;
+}
+.nav-btn:hover{border-color:var(--border2);color:var(--text)}
+.nav-btn.active{background:var(--red);border-color:var(--red);color:#fff;font-weight:600}
 
 /* MAIN */
 .main{padding:1.5rem 2rem;max-width:1400px;margin:0 auto}
@@ -1807,40 +1819,75 @@ function initCandles(){
   draw();
 }
 
-// ===== SWIPE NAVIGATION =====
+// ===== SWIPE NAVIGATION (touch + trackpad + mouse) =====
 const PAGES_ORDER = ['overview','monthly','annual','weekdays','history','gallery','weekly','analysis'];
 let currentPageIdx = 0;
-let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+let pointerStartX = 0, pointerStartY = 0, pointerStartTime = 0, isPointerDown = false;
+
+function navigateToPage(direction){
+  try{
+    if(direction === 'next' && currentPageIdx < PAGES_ORDER.length-1) currentPageIdx++;
+    else if(direction === 'prev' && currentPageIdx > 0) currentPageIdx--;
+    else return;
+    const name = PAGES_ORDER[currentPageIdx];
+    const btn = document.querySelector('[data-page="'+name+'"]');
+    showPage(name, btn);
+    if(btn) btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+  }catch(err){}
+}
 
 function initSwipe(){
   try{
     const main = document.getElementById('main-content');
     if(!main) return;
+
+    // Touch events (mobile)
     main.addEventListener('touchstart', function(e){
-      try{
-        touchStartX = e.touches[0].clientX;
-        touchStartY = e.touches[0].clientY;
-        touchStartTime = Date.now();
-      }catch(err){}
+      try{ pointerStartX=e.touches[0].clientX; pointerStartY=e.touches[0].clientY; pointerStartTime=Date.now(); }catch(err){}
     }, {passive:true});
+
     main.addEventListener('touchend', function(e){
       try{
-        const dx = e.changedTouches[0].clientX - touchStartX;
-        const dy = e.changedTouches[0].clientY - touchStartY;
-        const dt = Date.now() - touchStartTime;
-        if(Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy)*2 && dt < 350){
-          if(dx < 0 && currentPageIdx < PAGES_ORDER.length-1){
-            currentPageIdx++;
-          } else if(dx > 0 && currentPageIdx > 0){
-            currentPageIdx--;
-          } else return;
-          const name = PAGES_ORDER[currentPageIdx];
-          const btn = document.querySelector('[data-page="'+name+'"]');
-          showPage(name, btn);
-          if(btn) btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+        const dx=e.changedTouches[0].clientX-pointerStartX;
+        const dy=e.changedTouches[0].clientY-pointerStartY;
+        const dt=Date.now()-pointerStartTime;
+        if(Math.abs(dx)>65 && Math.abs(dx)>Math.abs(dy)*1.8 && dt<400){
+          navigateToPage(dx<0?'next':'prev');
         }
       }catch(err){}
     }, {passive:true});
+
+    // Mouse/trackpad events (desktop Mac)
+    main.addEventListener('mousedown', function(e){
+      try{ isPointerDown=true; pointerStartX=e.clientX; pointerStartY=e.clientY; pointerStartTime=Date.now(); }catch(err){}
+    });
+    main.addEventListener('mouseup', function(e){
+      try{
+        if(!isPointerDown) return;
+        isPointerDown=false;
+        const dx=e.clientX-pointerStartX;
+        const dy=e.clientY-pointerStartY;
+        const dt=Date.now()-pointerStartTime;
+        if(Math.abs(dx)>80 && Math.abs(dx)>Math.abs(dy)*2 && dt<500){
+          navigateToPage(dx<0?'next':'prev');
+        }
+      }catch(err){}
+    });
+    main.addEventListener('mouseleave', function(){ isPointerDown=false; });
+
+    // Trackpad wheel horizontal scroll (Mac)
+    let wheelTimeout;
+    main.addEventListener('wheel', function(e){
+      try{
+        if(Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 30){
+          clearTimeout(wheelTimeout);
+          wheelTimeout = setTimeout(function(){
+            navigateToPage(e.deltaX > 0 ? 'next' : 'prev');
+          }, 80);
+        }
+      }catch(err){}
+    }, {passive:true});
+
   }catch(err){}
 }
 
