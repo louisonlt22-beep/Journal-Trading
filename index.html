@@ -632,6 +632,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
     <div class="page" id="page-analysis">
       <h2 style="font-size:20px;font-weight:700;margin-bottom:1.25rem">🔥 Analyse Avancée</h2>
       <div class="alert-banner" id="loss-alert" style="display:none">⚠️ Tu enchaînes <strong id="loss-count">3</strong> losses consécutifs — pense à faire une pause !</div>
+      <div class="card"><div class="card-title">📋 Respect du Plan de Trading</div><div id="plan-stats-container"></div></div>
       <div class="card"><div class="card-title">🔥 Séries (Streaks)</div><div class="streak-box" id="streak-box"></div></div>
       <div class="card">
         <div class="card-title">🎯 Objectif Mensuel — Respect du Plan <span id="obj-month-label"></span></div>
@@ -759,9 +760,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14
       </div>
     </div>
   </div>
-  <div id="pts-checklist-section" style="display:none;margin-bottom:1rem">
-    <div style="font-size:13px;font-weight:600;margin-bottom:8px">✅ Checklist de discipline</div>
-    <div id="chk-list"></div>
+  <div style="margin-bottom:1rem">
+    <div style="font-size:13px;font-weight:600;margin-bottom:10px">📋 Respect du plan de trading</div>
+    <div style="display:flex;gap:10px">
+      <button id="btn-plan-yes" onclick="setPlanRespect(true)" style="flex:1;padding:14px;border-radius:10px;border:2px solid var(--border2);background:var(--bg4);color:var(--text2);font-size:15px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .2s">✅ Respecté</button>
+      <button id="btn-plan-no" onclick="setPlanRespect(false)" style="flex:1;padding:14px;border-radius:10px;border:2px solid var(--border2);background:var(--bg4);color:var(--text2);font-size:15px;font-weight:600;cursor:pointer;font-family:var(--font);transition:all .2s">❌ Non respecté</button>
+    </div>
   </div>
   <div style="margin-bottom:1rem">
     <div style="font-size:12px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">Psychologie du trade</div>
@@ -907,6 +911,7 @@ function deleteAccountByIdx(idx){
 function switchAccount(id){
   const ac = accounts.find(a => a.id === id);
   if(!ac) return;
+  if(currentAccount) saveTrades();
   currentAccount = ac;
   loadTrades();
   document.getElementById('topbar-account-name').textContent = ac.name;
@@ -1001,15 +1006,59 @@ function saveTrades(){ localStorage.setItem('loustic_trades_'+currentAccount.id,
 async function syncGS(trade){
   if(!currentAccount||!currentAccount.gsUrl)return;
   try{
-    document.getElementById('sync-dot').className='sync-dot idle';
-    document.getElementById('sync-msg').textContent='Sync...';
-    await fetch(currentAccount.gsUrl,{method:'POST',mode:'no-cors',body:JSON.stringify(trade),headers:{'Content-Type':'application/json'}});
-    document.getElementById('sync-dot').className='sync-dot ok';
-    document.getElementById('sync-msg').textContent='✓ Synchronisé';
+    setSyncStatus('idle','Sync...');
+    // Use no-cors fetch - works on GitHub Pages
+    const blob = new Blob([JSON.stringify(trade)], {type:'application/json'});
+    await fetch(currentAccount.gsUrl, {
+      method:'POST',
+      mode:'no-cors',
+      body: blob
+    });
+    setSyncStatus('ok','✓ Synchronisé');
   }catch(e){
-    document.getElementById('sync-dot').className='sync-dot err';
-    document.getElementById('sync-msg').textContent='⚠ Erreur sync';
+    // Fallback: try via form post
+    try{
+      await syncViaForm(trade);
+      setSyncStatus('ok','✓ Synchronisé');
+    }catch(e2){
+      setSyncStatus('err','⚠ Erreur sync');
+    }
   }
+}
+
+function setSyncStatus(type, msg){
+  const dot = document.getElementById('sync-dot');
+  const txt = document.getElementById('sync-msg');
+  if(dot) dot.className = 'sync-dot ' + type;
+  if(txt) txt.textContent = msg;
+}
+
+function syncViaForm(data){
+  return new Promise((resolve, reject)=>{
+    try{
+      const iframe = document.createElement('iframe');
+      iframe.name = 'sync_frame_'+Date.now();
+      iframe.style.display = 'none';
+      document.body.appendChild(iframe);
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = currentAccount.gsUrl;
+      form.target = iframe.name;
+      form.style.display = 'none';
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'payload';
+      input.value = JSON.stringify(data);
+      form.appendChild(input);
+      document.body.appendChild(form);
+      iframe.onload = ()=>{ 
+        setTimeout(()=>{ iframe.remove(); form.remove(); }, 1000);
+        resolve(); 
+      };
+      setTimeout(()=>{ iframe.remove(); form.remove(); resolve(); }, 5000);
+      form.submit();
+    }catch(e){ reject(e); }
+  });
 }
 
 async function deleteFromSheets(id){
@@ -1112,6 +1161,7 @@ function openModal(id){
     document.getElementById('f-notes').value=t.notes||'';
     document.getElementById('f-psych').value=t.psych||3;
     document.getElementById('psych-label').textContent=PSYCH[t.psych||3];
+    if(t.planRespect!==null&&t.planRespect!==undefined) setPlanRespect(t.planRespect);
     selDir(t.direction||'BUY');
     selSetup(t.setup||'MB');
     if(t.planChecks)t.planChecks.forEach((v,i)=>{checks[i]=v;});
@@ -1146,7 +1196,7 @@ function resetModalFields(){
   document.getElementById('rr-strip').style.display='none';
   document.getElementById('pts-section').style.display='none';
   document.getElementById('pts-checklist-section').style.display='none';
-  dir=''; setup=''; levels={}; levelEntries=[]; checks=Array(CHECKS.length).fill(false); 
+  dir=''; setup=''; levels={}; levelEntries=[]; checks=Array(CHECKS.length).fill(false); resetPlanRespect(); 
   ['b-buy','b-sell','b-mb','b-bb','b-qm'].forEach(id=>{const b=document.getElementById(id);b.style.background='';b.style.color='';b.style.borderColor='';});
 }
 
@@ -1162,7 +1212,7 @@ function selSetup(s){
   ['MB','BB','QM'].forEach(x=>{const b=document.getElementById('b-'+x.toLowerCase());const on=s===x;b.style.cssText=on?`background:${colors[x][0]};color:${colors[x][1]};border-color:${colors[x][2]}`:''});
   const needPts=s==='MB'||s==='BB';
   document.getElementById('pts-section').style.display=needPts?'block':'none';
-  document.getElementById('pts-checklist-section').style.display='block';
+  
   if(needPts)renderLevels();
   initChecks();
 }
@@ -1295,11 +1345,32 @@ function toggleCloseDate(){
   calcRR();
 }
 
-function initChecks(){
-  document.getElementById('chk-list').innerHTML=CHECKS.map((t,i)=>
-    `<label class="chk-item${checks[i]?' on':''}" id="ci${i}"><input type="checkbox"${checks[i]?' checked':''} onchange="toggleChk(${i})"> ${t}</label>`).join('');
+let planRespect = null; // true=yes, false=no, null=not set
+
+function setPlanRespect(val){
+  planRespect = val;
+  const yes = document.getElementById('btn-plan-yes');
+  const no = document.getElementById('btn-plan-no');
+  if(yes && no){
+    yes.style.background = val===true ? 'var(--green-bg)' : 'var(--bg4)';
+    yes.style.borderColor = val===true ? 'var(--green)' : 'var(--border2)';
+    yes.style.color = val===true ? 'var(--green)' : 'var(--text2)';
+    no.style.background = val===false ? 'var(--red-bg)' : 'var(--bg4)';
+    no.style.borderColor = val===false ? 'var(--red)' : 'var(--border2)';
+    no.style.color = val===false ? 'var(--red)' : 'var(--text2)';
+  }
 }
-function toggleChk(i){checks[i]=!checks[i];document.getElementById('ci'+i).classList.toggle('on',checks[i]);}
+
+function resetPlanRespect(){
+  planRespect = null;
+  const yes = document.getElementById('btn-plan-yes');
+  const no = document.getElementById('btn-plan-no');
+  if(yes){ yes.style.background='var(--bg4)'; yes.style.borderColor='var(--border2)'; yes.style.color='var(--text2)'; }
+  if(no){ no.style.background='var(--bg4)'; no.style.borderColor='var(--border2)'; no.style.color='var(--text2)'; }
+}
+
+function initChecks(){}
+function toggleChk(i){}
 function updatePsych(){document.getElementById('psych-label').textContent=PSYCH[document.getElementById('f-psych').value];}
 
 function calcRR(){
@@ -1396,8 +1467,8 @@ async function saveTrade(){
     psych:parseInt(document.getElementById('f-psych').value),
     pts:(setup==='MB'||setup==='BB')?getPts():null,
     lvls:getLvlsString(),
-    planScore:checks.filter(Boolean).length,
-    planChecks:[...checks],
+    planRespect: planRespect,
+    planScore: planRespect===true ? 1 : planRespect===false ? 0 : null,
     ...rrData
   };
 
@@ -1459,11 +1530,15 @@ function renderOverview(){
   const errPsych=trades.filter(t=>t.psych<=2).length;
   const errPct=total?(errPsych/total*100).toFixed(1):0;
 
+  const planT = trades.filter(t=>t.planRespect!==null&&t.planRespect!==undefined);
+  const planOk = planT.filter(t=>t.planRespect===true).length;
+  const planPct = planT.length ? (planOk/planT.length*100).toFixed(0) : 0;
+
   document.getElementById('overview-cards').innerHTML=`
     <div class="stat-card"><div class="icon" style="background:var(--red-bg)">📊</div><div class="label">P&L Total</div><div class="value ${totalPnl>=0?'pos':'neg'}">${fmt$(totalPnl)}</div><div class="sub">Performance globale</div></div>
     <div class="stat-card"><div class="icon" style="background:var(--blue-bg)">🎯</div><div class="label">Taux de Réussite</div><div class="value" style="color:var(--blue)">${wr}%</div><div class="prog-bar"><div class="prog-fill" style="width:${wr}%;background:var(--blue)"></div></div><div class="sub">${wins} gains · ${losses} pertes</div></div>
     <div class="stat-card"><div class="icon" style="background:var(--green-bg)">⚡</div><div class="label">RR Moyen</div><div class="value pos">${avgRR}</div><div class="sub">${trades.filter(t=>t.rr>0).length} trades avec RR</div></div>
-    <div class="stat-card"><div class="icon" style="background:var(--amber-bg)">🧠</div><div class="label">Erreur Psycho</div><div class="value" style="color:var(--amber)">${errPct}%</div><div class="prog-bar"><div class="prog-fill" style="width:${errPct}%;background:var(--amber)"></div></div><div class="sub">${errPsych}/${total} mauvaise psycho</div></div>`;
+    <div class="stat-card"><div class="icon" style="background:${parseFloat(planPct)>=70?'var(--green-bg)':'var(--red-bg)'}">📋</div><div class="label">Respect du Plan</div><div class="value ${parseFloat(planPct)>=70?'pos':'neg'}">${planPct}%</div><div class="prog-bar"><div class="prog-fill" style="width:${planPct}%;background:${parseFloat(planPct)>=70?'var(--green)':'var(--red)'}"></div></div><div class="sub">${planOk}/${planT.length} trades</div></div>`;
 
   const bal=currentAccount?parseFloat(currentAccount.balance):100000;
   const cumul=[bal];
@@ -1555,11 +1630,15 @@ function renderMonthly(){
   const rrTotal=mt.reduce((s,t)=>s+(t.realized||0),0);
   const bestPair=[...new Set(mt.map(t=>t.pair))].map(p=>{const ts=mt.filter(t=>t.pair===p);return{p,pnl:ts.reduce((s,t)=>s+(t.pnl||0),0)};}).sort((a,b)=>b.pnl-a.pnl)[0];
 
+  const mPlanT=mt.filter(t=>t.planRespect!==null&&t.planRespect!==undefined);
+  const mPlanOk=mPlanT.filter(t=>t.planRespect===true).length;
+  const mPlanPct=mPlanT.length?(mPlanOk/mPlanT.length*100).toFixed(0):0;
+
   document.getElementById('monthly-cards').innerHTML=`
     <div class="stat-card"><div class="label">P&L du Mois</div><div class="value ${totalPnl>=0?'pos':'neg'}">${fmt$(totalPnl)}</div><div class="sub">${MONTHS[month]} ${year}</div></div>
     <div class="stat-card"><div class="label">RR Total</div><div class="value" style="color:var(--blue)">${rrTotal>=0?'+':''}${rrTotal.toFixed(2)}</div></div>
-    <div class="stat-card"><div class="label">Meilleure Paire</div><div class="value pos" style="font-size:18px">${bestPair?fmt$(bestPair.pnl):'—'}</div><div class="sub">${bestPair?bestPair.p:'—'}</div></div>
-    <div class="stat-card"><div class="label">Total Trades</div><div class="value">${mt.length}</div><div class="sub">${wins} W · ${losses} L</div></div>`;
+    <div class="stat-card"><div class="label">Total Trades</div><div class="value">${mt.length}</div><div class="sub">${wins} W · ${losses} L</div></div>
+    <div class="stat-card"><div class="label">Respect du Plan</div><div class="value ${parseFloat(mPlanPct)>=70?'pos':'neg'}">${mPlanPct}%</div><div class="prog-bar"><div class="prog-fill" style="width:${mPlanPct}%;background:${parseFloat(mPlanPct)>=70?'var(--green)':'var(--red)'}"></div></div><div class="sub">${mPlanOk}/${mPlanT.length} trades</div></div>`;
 
   const dayCumul={};mt.forEach(t=>{const d=getDay(t);if(!dayCumul[d])dayCumul[d]=0;dayCumul[d]+=(t.pnl||0);});
   const daysInMonth=new Date(year,month+1,0).getDate();
@@ -1619,11 +1698,15 @@ function renderAnnual(){
   const bestMonth=monthPnls.indexOf(Math.max(...monthPnls));
   const worstMonth=monthPnls.indexOf(Math.min(...monthPnls));
 
+  const yPlanT=yt.filter(t=>t.planRespect!==null&&t.planRespect!==undefined);
+  const yPlanOk=yPlanT.filter(t=>t.planRespect===true).length;
+  const yPlanPct=yPlanT.length?(yPlanOk/yPlanT.length*100).toFixed(0):0;
+
   document.getElementById('annual-cards').innerHTML=`
     <div class="stat-card"><div class="label">P&L Année</div><div class="value ${totalPnl>=0?'pos':'neg'}">${fmt$(totalPnl)}</div><div class="sub">${year} · ${yt.length} trades</div></div>
     <div class="stat-card"><div class="label">Mois Profitables</div><div class="value" style="color:var(--blue)">${(profMonths/12*100).toFixed(1)}%</div><div class="sub">${profMonths}/12 mois</div></div>
     <div class="stat-card"><div class="label">Meilleur Mois</div><div class="value pos">${fmt$(monthPnls[bestMonth])}</div><div class="sub">${MONTHS[bestMonth]}</div></div>
-    <div class="stat-card"><div class="label">Pire Mois</div><div class="value neg">${fmt$(monthPnls[worstMonth])}</div><div class="sub">${MONTHS[worstMonth]}</div></div>`;
+    <div class="stat-card"><div class="label">Respect du Plan</div><div class="value ${parseFloat(yPlanPct)>=70?'pos':'neg'}">${yPlanPct}%</div><div class="prog-bar"><div class="prog-fill" style="width:${yPlanPct}%;background:${parseFloat(yPlanPct)>=70?'var(--green)':'var(--red)'}"></div></div><div class="sub">${yPlanOk}/${yPlanT.length} trades</div></div>`;
 
   const maxAbs=Math.max(...monthPnls.map(Math.abs),1);
   document.getElementById('annual-months').innerHTML=MSHORT.map((m,i)=>`
@@ -2068,7 +2151,7 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape') closeLightbox(); 
 
 // ===== ANALYSIS+ =====
 function renderAnalysis(){
-  checkLossAlert();renderStreak();renderRRDist();renderBestHours();renderPsychCorr();renderObj();
+  renderPlanStats();checkLossAlert();renderStreak();renderRRDist();renderBestHours();renderPsychCorr();renderObj();
 }
 
 function checkLossAlert(){
@@ -2078,6 +2161,42 @@ function checkLossAlert(){
   const banner=document.getElementById('loss-alert');
   if(consec>=3){banner.style.display='flex';document.getElementById('loss-count').textContent=consec;}
   else banner.style.display='none';
+}
+
+function renderPlanStats(){
+  const ct = document.getElementById('plan-stats-container');
+  if(!ct) return;
+  const planT = trades.filter(t=>t.planRespect!==null&&t.planRespect!==undefined);
+  const planOk = planT.filter(t=>t.planRespect===true).length;
+  const planNo = planT.filter(t=>t.planRespect===false).length;
+  const pct = planT.length?(planOk/planT.length*100).toFixed(1):0;
+  // Win rate when plan respected vs not
+  const wrOk = planT.filter(t=>t.planRespect===true&&t.status==='WIN').length;
+  const wrNo = planT.filter(t=>t.planRespect===false&&t.status==='WIN').length;
+  const wrOkPct = planOk?(wrOk/planOk*100).toFixed(1):0;
+  const wrNoPct = planNo?(wrNo/planNo*100).toFixed(1):0;
+  // PnL when respected vs not
+  const pnlOk = planT.filter(t=>t.planRespect===true).reduce((s,t)=>s+(t.pnl||0),0);
+  const pnlNo = planT.filter(t=>t.planRespect===false).reduce((s,t)=>s+(t.pnl||0),0);
+  ct.innerHTML=`
+    <div class="cards4" style="margin-bottom:1rem">
+      <div class="stat-card"><div class="label">Taux de respect</div><div class="value ${parseFloat(pct)>=70?'pos':'neg'}">${pct}%</div><div class="sub">${planOk} oui · ${planNo} non</div></div>
+      <div class="stat-card"><div class="label">Win rate si respecté</div><div class="value pos">${wrOkPct}%</div><div class="sub">${wrOk}/${planOk} trades</div></div>
+      <div class="stat-card"><div class="label">Win rate si non respecté</div><div class="value neg">${wrNoPct}%</div><div class="sub">${wrNo}/${planNo} trades</div></div>
+      <div class="stat-card"><div class="label">P&L si respecté</div><div class="value ${pnlOk>=0?'pos':'neg'}">${fmt$(pnlOk)}</div><div class="sub">vs ${fmt$(pnlNo)} si non</div></div>
+    </div>
+    <div style="background:var(--bg3);border-radius:10px;padding:1rem;display:flex;gap:1rem;align-items:center">
+      <div style="flex:1">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:6px">Trades respectant le plan</div>
+        <div style="height:12px;background:var(--bg4);border-radius:6px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--green);border-radius:6px;transition:width .6s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:var(--text2)">
+          <span style="color:var(--green)">✅ ${planOk} respectés</span>
+          <span style="color:var(--red)">❌ ${planNo} non respectés</span>
+        </div>
+      </div>
+    </div>`;
 }
 
 function renderStreak(){
@@ -2176,220 +2295,208 @@ function initCandles(){
   function resize(){canvas.width=window.innerWidth;canvas.height=window.innerHeight;}
   resize();
   window.addEventListener('resize',resize);
-  const FACES=[
-    {mouth:'smile',brows:'up',color:'#00d46a'},
-    {mouth:'big-smile',brows:'up',color:'#00d46a'},
-    {mouth:'frown',brows:'angry',color:'#ff3d5a'},
-    {mouth:'flat',brows:'neutral',color:'#ffb020'},
-    {mouth:'smile',brows:'neutral',color:'#00d46a'},
-    {mouth:'frown',brows:'sad',color:'#ff3d5a'},
-    {mouth:'smirk',brows:'up',color:'#00d46a'},
-  ];
-  const candles=[];
-  const N=Math.floor(window.innerWidth/60)+2;
-  for(let i=0;i<N;i++){
-    const face=FACES[Math.floor(Math.random()*FACES.length)];
-    const w=14+Math.random()*10;
-    candles.push({x:20+(i/N)*window.innerWidth*0.96,y:window.innerHeight*0.15+Math.random()*window.innerHeight*0.7,w,h:30+Math.random()*60,wickTop:8+Math.random()*20,wickBot:6+Math.random()*12,color:face.color,face:face.mouth,brows:face.brows,speed:0.3+Math.random()*0.5,phase:Math.random()*Math.PI*2,amp:5+Math.random()*12,bobSpeed:0.6+Math.random()*0.8});
+
+  // Candle types: green (bullish) and red (bearish)
+  function makeCandle(angle, radiusX, radiusY, cx, cy){
+    const isGreen = Math.random() > 0.45;
+    return {
+      angle,          // position on ellipse
+      radiusX,        // ellipse X radius
+      radiusY,        // ellipse Y radius
+      cx, cy,         // center of ellipse
+      w: 10 + Math.random()*12,
+      h: 28 + Math.random()*70,
+      wickTop: 10 + Math.random()*28,
+      wickBot: 6 + Math.random()*16,
+      color: isGreen ? '#00d46a' : '#ff3d5a',
+      speed: (0.002 + Math.random()*0.003) * (Math.random()>0.5?1:-1),
+      bobPhase: Math.random()*Math.PI*2,
+      bobAmp: 4 + Math.random()*10,
+      bobSpeed: 0.4 + Math.random()*0.6,
+    };
   }
-  function drawFace(cx,fy,r,face,brows,color){
-    ctx.fillStyle='rgba(0,0,0,0.15)';
-    ctx.beginPath();ctx.ellipse(cx,fy+r*0.15,r,r,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.9)';
-    ctx.beginPath();ctx.ellipse(cx,fy,r,r,0,0,Math.PI*2);ctx.fill();
-    const eyeR=r*0.17,eyeY=fy-r*0.18,eyeOff=r*0.32;
-    ctx.fillStyle='#333';
-    ctx.beginPath();ctx.ellipse(cx-eyeOff,eyeY,eyeR,eyeR*1.2,0,0,Math.PI*2);ctx.fill();
-    ctx.beginPath();ctx.ellipse(cx+eyeOff,eyeY,eyeR,eyeR*1.2,0,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.9)';
-    ctx.beginPath();ctx.ellipse(cx-eyeOff+eyeR*0.3,eyeY-eyeR*0.2,eyeR*0.35,eyeR*0.3,0,0,Math.PI*2);ctx.fill();
-    ctx.beginPath();ctx.ellipse(cx+eyeOff+eyeR*0.3,eyeY-eyeR*0.2,eyeR*0.35,eyeR*0.3,0,0,Math.PI*2);ctx.fill();
-    ctx.strokeStyle='#444';ctx.lineWidth=r*0.07;ctx.lineCap='round';
-    if(brows==='up'){ctx.beginPath();ctx.moveTo(cx-eyeOff-eyeR,eyeY-eyeR*1.8);ctx.quadraticCurveTo(cx-eyeOff,eyeY-eyeR*2.4,cx-eyeOff+eyeR,eyeY-eyeR*1.8);ctx.stroke();ctx.beginPath();ctx.moveTo(cx+eyeOff-eyeR,eyeY-eyeR*1.8);ctx.quadraticCurveTo(cx+eyeOff,eyeY-eyeR*2.4,cx+eyeOff+eyeR,eyeY-eyeR*1.8);ctx.stroke();}
-    else if(brows==='angry'){ctx.beginPath();ctx.moveTo(cx-eyeOff-eyeR,eyeY-eyeR*2.2);ctx.lineTo(cx-eyeOff+eyeR,eyeY-eyeR*1.5);ctx.stroke();ctx.beginPath();ctx.moveTo(cx+eyeOff-eyeR,eyeY-eyeR*1.5);ctx.lineTo(cx+eyeOff+eyeR,eyeY-eyeR*2.2);ctx.stroke();}
-    else if(brows==='sad'){ctx.beginPath();ctx.moveTo(cx-eyeOff-eyeR,eyeY-eyeR*1.5);ctx.lineTo(cx-eyeOff+eyeR,eyeY-eyeR*2.2);ctx.stroke();ctx.beginPath();ctx.moveTo(cx+eyeOff-eyeR,eyeY-eyeR*2.2);ctx.lineTo(cx+eyeOff+eyeR,eyeY-eyeR*1.5);ctx.stroke();}
-    else{ctx.beginPath();ctx.moveTo(cx-eyeOff-eyeR,eyeY-eyeR*1.8);ctx.lineTo(cx-eyeOff+eyeR,eyeY-eyeR*1.8);ctx.stroke();ctx.beginPath();ctx.moveTo(cx+eyeOff-eyeR,eyeY-eyeR*1.8);ctx.lineTo(cx+eyeOff+eyeR,eyeY-eyeR*1.8);ctx.stroke();}
-    const mY=fy+r*0.38,mW=r*0.52;
-    ctx.strokeStyle='#444';ctx.lineWidth=r*0.09;
-    if(face==='smile'){ctx.beginPath();ctx.moveTo(cx-mW,mY);ctx.quadraticCurveTo(cx,mY+r*0.38,cx+mW,mY);ctx.stroke();}
-    else if(face==='big-smile'){ctx.beginPath();ctx.moveTo(cx-mW,mY-r*0.05);ctx.quadraticCurveTo(cx,mY+r*0.5,cx+mW,mY-r*0.05);ctx.stroke();ctx.fillStyle=color+'55';ctx.beginPath();ctx.ellipse(cx-r*0.5,mY+r*0.08,r*0.17,r*0.11,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(cx+r*0.5,mY+r*0.08,r*0.17,r*0.11,0,0,Math.PI*2);ctx.fill();}
-    else if(face==='frown'){ctx.beginPath();ctx.moveTo(cx-mW,mY+r*0.2);ctx.quadraticCurveTo(cx,mY-r*0.25,cx+mW,mY+r*0.2);ctx.stroke();}
-    else if(face==='smirk'){ctx.beginPath();ctx.moveTo(cx-mW*0.3,mY);ctx.quadraticCurveTo(cx+mW*0.5,mY+r*0.3,cx+mW,mY);ctx.stroke();}
-    else{ctx.beginPath();ctx.moveTo(cx-mW,mY);ctx.lineTo(cx+mW,mY);ctx.stroke();}
+
+  function buildCandles(){
+    const cx = canvas.width/2;
+    const cy = canvas.height/2;
+    const candles = [];
+    // Inner orbit
+    const rx1 = Math.min(canvas.width*0.32, 260);
+    const ry1 = Math.min(canvas.height*0.2, 90);
+    const N1 = Math.max(16, Math.floor(canvas.width/55));
+    for(let i=0;i<N1;i++){
+      const angle = (i/N1)*Math.PI*2;
+      const c = makeCandle(angle, rx1, ry1, cx, cy);
+      c.w *= 0.75; c.h *= 0.75;
+      candles.push(c);
+    }
+    // Outer orbit
+    const rx2 = Math.min(canvas.width*0.46, 380);
+    const ry2 = Math.min(canvas.height*0.34, 140);
+    const N2 = Math.max(22, Math.floor(canvas.width/45));
+    for(let i=0;i<N2;i++){
+      const angle = (i/N2)*Math.PI*2 + Math.PI/N2;
+      candles.push(makeCandle(angle, rx2, ry2, cx, cy));
+    }
+    // Scattered background candles
+    const N3 = 12;
+    for(let i=0;i<N3;i++){
+      const angle = (i/N3)*Math.PI*2;
+      const rx3 = canvas.width*0.48 + Math.random()*canvas.width*0.08;
+      const ry3 = canvas.height*0.38 + Math.random()*canvas.height*0.08;
+      const c = makeCandle(angle, rx3, ry3, cx, cy);
+      c.speed *= 0.4;
+      c.w *= 0.6; c.h *= 0.6;
+      candles.push(c);
+    }
+    return candles;
   }
-  let t=0;
+
+  let candles = buildCandles();
+  window.addEventListener('resize', ()=>{ resize(); candles=buildCandles(); });
+
+  function drawCandle(x, y, w, h, wickTop, wickBot, color, alpha, scale){
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+
+    // Wick top
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, -h/2 - wickTop);
+    ctx.lineTo(0, -h/2);
+    ctx.stroke();
+
+    // Body
+    ctx.shadowBlur = 12;
+    const rx = w*0.18;
+    const grad = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2);
+    grad.addColorStop(0, color+'cc');
+    grad.addColorStop(0.3, color+'ff');
+    grad.addColorStop(1, color+'88');
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-w/2+rx, -h/2);
+    ctx.lineTo(w/2-rx, -h/2);
+    ctx.quadraticCurveTo(w/2, -h/2, w/2, -h/2+rx);
+    ctx.lineTo(w/2, h/2-rx);
+    ctx.quadraticCurveTo(w/2, h/2, w/2-rx, h/2);
+    ctx.lineTo(-w/2+rx, h/2);
+    ctx.quadraticCurveTo(-w/2, h/2, -w/2, h/2-rx);
+    ctx.lineTo(-w/2, -h/2+rx);
+    ctx.quadraticCurveTo(-w/2, -h/2, -w/2+rx, -h/2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.stroke();
+
+    // Shine
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.beginPath();
+    ctx.ellipse(-w*0.15, -h*0.15, w*0.12, h*0.18, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    // Wick bottom
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, h/2);
+    ctx.lineTo(0, h/2 + wickBot);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  let t = 0;
   function draw(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    t+=0.012;
-    candles.forEach(c=>{
-      const y=c.y+Math.sin(t*c.speed+c.phase)*c.amp;
-      const wiggle=Math.sin(t*c.bobSpeed+c.phase*2)*0.05;
-      ctx.save();
-      ctx.globalAlpha=0.35;
-      ctx.translate(c.x+c.w/2,y);
-      ctx.rotate(wiggle);
-      ctx.translate(-c.w/2,0);
-      ctx.strokeStyle=c.color;ctx.lineWidth=1.5;ctx.lineCap='round';
-      ctx.beginPath();ctx.moveTo(c.w/2,-c.h/2-c.wickTop);ctx.lineTo(c.w/2,-c.h/2);ctx.stroke();
-      const rx=c.w*0.18;
-      ctx.fillStyle=c.color+'bb';
-      ctx.strokeStyle=c.color;ctx.lineWidth=1.2;
-      ctx.beginPath();
-      ctx.moveTo(rx,-c.h/2);ctx.lineTo(c.w-rx,-c.h/2);ctx.quadraticCurveTo(c.w,-c.h/2,c.w,-c.h/2+rx);
-      ctx.lineTo(c.w,c.h/2-rx);ctx.quadraticCurveTo(c.w,c.h/2,c.w-rx,c.h/2);
-      ctx.lineTo(rx,c.h/2);ctx.quadraticCurveTo(0,c.h/2,0,c.h/2-rx);
-      ctx.lineTo(0,-c.h/2+rx);ctx.quadraticCurveTo(0,-c.h/2,rx,-c.h/2);
-      ctx.closePath();ctx.fill();ctx.stroke();
-      ctx.beginPath();ctx.moveTo(c.w/2,c.h/2);ctx.lineTo(c.w/2,c.h/2+c.wickBot);ctx.stroke();
-      drawFace(c.w/2,-c.h/2+c.h*0.28,c.w*0.28,c.face,c.brows,c.color);
-      ctx.restore();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    t += 0.01;
+
+    candles.forEach(c => {
+      // Orbit around ellipse
+      c.angle += c.speed;
+      const ex = c.cx + Math.cos(c.angle) * c.radiusX;
+      const ey = c.cy + Math.sin(c.angle) * c.radiusY;
+      // Bob up/down
+      const bob = Math.sin(t * c.bobSpeed + c.bobPhase) * c.bobAmp;
+      // Depth effect: candles behind center are smaller/dimmer
+      const depth = (Math.sin(c.angle) + 1) / 2; // 0=back, 1=front
+      const scale = 0.5 + depth * 0.7;
+      const alpha = 0.22 + depth * 0.4;
+      drawCandle(ex, ey + bob, c.w, c.h, c.wickTop, c.wickBot, c.color, alpha, scale);
     });
+
     requestAnimationFrame(draw);
   }
   draw();
 }
 
-// ===== SWIPE NAVIGATION (touch + trackpad + mouse) =====
-const PAGES_ORDER = ['overview','monthly','annual','weekdays','history','gallery','weekly','analysis'];
-let currentPageIdx = 0;
-let pointerStartX = 0, pointerStartY = 0, pointerStartTime = 0, isPointerDown = false;
+// ===== SWIPE =====
+const PAGES_ORDER=['overview','monthly','annual','weekdays','history','gallery','weekly','analysis'];
+let currentPageIdx=0;
+let pointerStartX=0,pointerStartY=0,pointerStartTime=0,isPointerDown=false;
+
+function updatePageIdx(name){
+  const idx=PAGES_ORDER.indexOf(name);
+  if(idx>=0)currentPageIdx=idx;
+}
 
 function navigateToPage(direction){
   try{
-    let newIdx = currentPageIdx;
-    if(direction==='next' && currentPageIdx<PAGES_ORDER.length-1) newIdx++;
-    else if(direction==='prev' && currentPageIdx>0) newIdx--;
-    else{ slideTo(currentPageIdx); return; }
+    let newIdx=currentPageIdx;
+    if(direction==='next'&&currentPageIdx<PAGES_ORDER.length-1)newIdx++;
+    else if(direction==='prev'&&currentPageIdx>0)newIdx--;
+    else return;
     const name=PAGES_ORDER[newIdx];
     const btn=document.querySelector('[data-page="'+name+'"]');
-    showPage(name, btn);
-    if(btn) btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+    showPage(name,btn,direction);
+    if(btn)btn.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
   }catch(err){}
 }
 
 function initSwipe(){
   try{
-    const container = document.getElementById('pages-container');
-    if(!container) return;
-    let startX=0, startY=0, startTime=0, dragging=false, currentDrag=0;
-    const W = ()=> window.innerWidth;
-
-    // Init position
-    slideTo(0, false);
-
-    // ---- TOUCH (mobile) ----
-    container.addEventListener('touchstart', function(e){
-      try{
-        startX=e.touches[0].clientX;
-        startY=e.touches[0].clientY;
-        startTime=Date.now();
-        dragging=false;
-        currentDrag=0;
-        container.style.transition='none';
-      }catch(err){}
-    }, {passive:true});
-
-    container.addEventListener('touchmove', function(e){
-      try{
-        const dx=e.touches[0].clientX-startX;
-        const dy=e.touches[0].clientY-startY;
-        if(!dragging && Math.abs(dx)>8 && Math.abs(dx)>Math.abs(dy)){
-          dragging=true;
-        }
-        if(dragging){
-          currentDrag=dx;
-          const base=currentPageIdx*W();
-          const resistance=0.25;
-          let offset=base-dx;
-          // Add resistance at edges
-          if((dx>0 && currentPageIdx===0)||(dx<0 && currentPageIdx===PAGES_ORDER.length-1)){
-            offset=base-dx*resistance;
-          }
-          container.style.transform='translateX(-'+offset+'px)';
-        }
-      }catch(err){}
-    }, {passive:true});
-
-    container.addEventListener('touchend', function(e){
-      try{
-        const dx=e.changedTouches[0].clientX-startX;
-        const dy=e.changedTouches[0].clientY-startY;
-        const dt=Date.now()-startTime;
-        const vel=Math.abs(dx)/dt;
-        container.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';
-        if(dragging && (Math.abs(dx)>W()*0.3 || vel>0.5)){
-          navigateToPage(dx<0?'next':'prev');
-        } else {
-          slideTo(currentPageIdx);
-        }
-        dragging=false;
-      }catch(err){}
-    }, {passive:true});
-
-    // ---- MOUSE drag (Mac trackpad click+drag) ----
-    container.addEventListener('mousedown', function(e){
-      try{
-        if(e.button!==0) return;
-        startX=e.clientX; startY=e.clientY; startTime=Date.now();
-        isPointerDown=true; dragging=false;
-        container.style.transition='none';
-        e.preventDefault();
-      }catch(err){}
+    // Touch
+    document.addEventListener('touchstart',function(e){
+      pointerStartX=e.touches[0].clientX;pointerStartY=e.touches[0].clientY;pointerStartTime=Date.now();
+    },{passive:true});
+    document.addEventListener('touchend',function(e){
+      const dx=e.changedTouches[0].clientX-pointerStartX;
+      const dy=e.changedTouches[0].clientY-pointerStartY;
+      const dt=Date.now()-pointerStartTime;
+      if(Math.abs(dx)>65&&Math.abs(dx)>Math.abs(dy)*1.8&&dt<400) navigateToPage(dx<0?'next':'prev');
+    },{passive:true});
+    // Mouse
+    document.addEventListener('mousedown',function(e){
+      if(e.target.closest('.modal-overlay,.modal,.nav,.topbar,select,button,input'))return;
+      isPointerDown=true;pointerStartX=e.clientX;pointerStartY=e.clientY;pointerStartTime=Date.now();
     });
-    window.addEventListener('mousemove', function(e){
-      try{
-        if(!isPointerDown) return;
-        const dx=e.clientX-startX;
-        const dy=e.clientY-startY;
-        if(!dragging && Math.abs(dx)>8 && Math.abs(dx)>Math.abs(dy)) dragging=true;
-        if(dragging){
-          currentDrag=dx;
-          const base=currentPageIdx*W();
-          let offset=base-dx;
-          if((dx>0&&currentPageIdx===0)||(dx<0&&currentPageIdx===PAGES_ORDER.length-1)) offset=base-dx*0.25;
-          container.style.transform='translateX(-'+offset+'px)';
-        }
-      }catch(err){}
+    document.addEventListener('mouseup',function(e){
+      if(!isPointerDown)return;isPointerDown=false;
+      const dx=e.clientX-pointerStartX;
+      const dy=e.clientY-pointerStartY;
+      const dt=Date.now()-pointerStartTime;
+      if(Math.abs(dx)>80&&Math.abs(dx)>Math.abs(dy)*2&&dt<500) navigateToPage(dx<0?'next':'prev');
     });
-    window.addEventListener('mouseup', function(e){
-      try{
-        if(!isPointerDown) return;
-        const dx=e.clientX-startX;
-        const dt=Date.now()-startTime;
-        const vel=Math.abs(dx)/dt;
-        isPointerDown=false;
-        container.style.transition='transform .32s cubic-bezier(.4,0,.2,1)';
-        if(dragging && (Math.abs(dx)>W()*0.25 || vel>0.4)){
-          navigateToPage(dx<0?'next':'prev');
-        } else if(dragging){
-          slideTo(currentPageIdx);
-        }
-        dragging=false;
-      }catch(err){}
-    });
-
-    // ---- TRACKPAD horizontal scroll (Mac) ----
-    let wheelLock=false, wheelTimeout;
-    window.addEventListener('wheel', function(e){
-      try{
-        if(wheelLock) return;
-        if(Math.abs(e.deltaX)>Math.abs(e.deltaY)*1.5 && Math.abs(e.deltaX)>15){
-          clearTimeout(wheelTimeout);
-          wheelTimeout=setTimeout(function(){
-            if(Math.abs(e.deltaX)>30){
-              wheelLock=true;
-              navigateToPage(e.deltaX>0?'next':'prev');
-              setTimeout(()=>{ wheelLock=false; }, 500);
-            }
-          }, 50);
-        }
-      }catch(err){}
-    }, {passive:true});
-
+    // Trackpad wheel
+    let wLock=false;
+    document.addEventListener('wheel',function(e){
+      if(wLock)return;
+      if(Math.abs(e.deltaX)>Math.abs(e.deltaY)*1.5&&Math.abs(e.deltaX)>25){
+        wLock=true;navigateToPage(e.deltaX>0?'next':'prev');
+        setTimeout(()=>{wLock=false;},600);
+      }
+    },{passive:true});
   }catch(err){}
 }
-
-
 
 // INIT
 window.addEventListener('load', function(){
